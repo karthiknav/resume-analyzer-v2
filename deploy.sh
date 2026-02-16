@@ -40,7 +40,7 @@ echo "🏗️ Step 1: Deploying infrastructure..."
 aws cloudformation deploy \
     --template-file template-infrastructure.yaml \
     --stack-name $STACK_NAME \
-    --parameter-overrides Environment=$ENVIRONMENT \
+    --parameter-overrides Environment=$ENVIRONMENT AgentArn=PLACEHOLDER \
     --capabilities CAPABILITY_NAMED_IAM \
     --region $REGION
 
@@ -62,10 +62,15 @@ EXECUTION_ROLE=$(aws cloudformation describe-stacks \
 echo "✅ Infrastructure deployed:"
 echo "  Documents Bucket: $DOCUMENTS_BUCKET"
 echo "  Execution Role: $EXECUTION_ROLE"
+echo ""
 
+# Step 2: Deploy Lambda function code
+echo "📦 Step 2: Deploying Lambda function code..."
+python deploy_lambda.py
+echo ""
 
-# Step 2: Configure and deploy AgentCore agent
-echo "🤖 Step 2: Configuring and deploying AgentCore agent..."
+# Step 3: Configure and deploy AgentCore agent
+echo "🤖 Step 3: Configuring and deploying AgentCore agent..."
 
 # Deploy agent using standalone script
 export ENVIRONMENT=$ENVIRONMENT
@@ -82,7 +87,7 @@ fi
 
 
 # Step 3: Test the deployment
-echo "🧪 Step 5: Testing the deployment..."
+echo "🧪 Step 4: Testing the deployment..."
 
 # Test the AgentCore agent directly
 echo "Testing AgentCore agent..."
@@ -98,5 +103,9 @@ echo "  Documents Bucket: $DOCUMENTS_BUCKET"
 echo "  Agent ARN: $AGENT_ARN"
 echo ""
 echo "📝 Next steps:"
-echo "  1. Upload job descriptions and to s3://$DOCUMENTS_BUCKET/jobs/"
-echo "  2. Upload resumes to s3://$DOCUMENTS_BUCKET/resumes/"
+echo "  1. Create SO folder structure: SO-NAME/jd/ and SO-NAME/resumes/"
+echo "  2. Upload resumes to s3://$DOCUMENTS_BUCKET/SO-NAME/resumes/"
+echo "  3. Upload job description to s3://$DOCUMENTS_BUCKET/SO-NAME/jd/ (triggers analysis)"
+echo ""
+echo "💡 Use helper script:"
+echo "  python setup_s3_structure.py $DOCUMENTS_BUCKET SO-12345 job.txt resume1.pdf resume2.pdf"

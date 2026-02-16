@@ -7,6 +7,11 @@ Parameters:
     Type: String
     Default: 'agentcore'
     Description: Environment name for resource naming
+  
+  AgentArn:
+    Type: String
+    Description: Bedrock AgentCore Runtime ARN (will be updated after deployment)
+    Default: 'PLACEHOLDER'
 
 Resources:
   # IAM Role for AgentCore
@@ -140,6 +145,7 @@ Resources:
   # S3 Bucket for documents
   DocumentsBucket:
     Type: AWS::S3::Bucket
+    DependsOn: LambdaInvokePermission
     Properties:
       BucketName: !Sub 'amzn-s3-resume-analyzer-bucket-${Environment}-${AWS::AccountId}'
       VersioningConfiguration:
@@ -149,6 +155,112 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt TriggerLambdaFunction.Arn
+
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'ResumeAnalyzerLambdaRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaS3BedrockPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt DocumentsBucket.Arn
+                  - !Sub '${DocumentsBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - bedrock-agentcore:InvokeAgentRuntime
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                Resource:
+                  - !GetAtt JobAnalysisTable.Arn
+                  - !GetAtt CandidateAnalysisTable.Arn
+
+  # Lambda Function
+  TriggerLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'ResumeAnalyzerTrigger-${Environment}'
+      Runtime: python3.12
+      Handler: lambda_trigger.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          AGENT_ARN: !Ref AgentArn
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          # Placeholder - will be updated by deployment script
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Placeholder'}
+
+  # Lambda Permission for S3
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TriggerLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt DocumentsBucket.Arn
+
+  # DynamoDB Table for Job Analysis
+  JobAnalysisTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'JobAnalysis-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: jobDescriptionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: jobDescriptionId
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  # DynamoDB Table for Candidate Analysis
+  CandidateAnalysisTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'CandidateAnalysis-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: jobDescriptionId
+          AttributeType: S
+        - AttributeName: candidateId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: jobDescriptionId
+          KeyType: HASH
+        - AttributeName: candidateId
+          KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
 
 Outputs:
   DocumentsBucket:
@@ -162,3 +274,21 @@ Outputs:
     Value: !GetAtt AgentCoreExecutionRole.Arn
     Export:
       Name: !Sub '${AWS::StackName}-AgentCoreExecutionRoleArn'
+  
+  LambdaFunctionArn:
+    Description: 'Lambda function ARN for S3 trigger'
+    Value: !GetAtt TriggerLambdaFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaFunctionArn'
+  
+  JobAnalysisTableName:
+    Description: 'DynamoDB table for job analysis'
+    Value: !Ref JobAnalysisTable
+    Export:
+      Name: !Sub '${AWS::StackName}-JobAnalysisTable'
+  
+  CandidateAnalysisTableName:
+    Description: 'DynamoDB table for candidate analysis'
+    Value: !Ref CandidateAnalysisTable
+    Export:
+      Name: !Sub '${AWS::StackName}-CandidateAnalysisTable'
