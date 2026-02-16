@@ -60,6 +60,21 @@ def main():
     print(f"📊 Final status: {status}")
     print(f"🎉 Agent deployed successfully!")
     print(f"\n📋 Agent ARN: {agent_arn}")
+    
+    # Update Lambda with Agent ARN
+    print("\n🔄 Updating Lambda function with Agent ARN...")
+    cf = boto3.client('cloudformation', region_name=region)
+    lambda_client = boto3.client('lambda', region_name=region)
+    
+    lambda_function_name = f"ResumeAnalyzerTrigger-{environment}"
+    try:
+        lambda_client.update_function_configuration(
+            FunctionName=lambda_function_name,
+            Environment={'Variables': {'AGENT_ARN': agent_arn}}
+        )
+        print(f"✅ Lambda updated with Agent ARN")
+    except Exception as e:
+        print(f"⚠️  Warning: Could not update Lambda: {e}")
 
 if __name__ == "__main__":
     main()

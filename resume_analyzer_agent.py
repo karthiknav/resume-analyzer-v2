@@ -195,31 +195,29 @@ async def invoke(payload):
         logger.info(f"🚀 Starting HR Agent invocation")
         logger.info(f"📥 Received payload: {json.dumps(payload, indent=2)}")
         
-        # Check if this is a plain text query (follow-up question) or S3 document processing
+        bucket = payload.get('bucket')
+        resume_key = payload.get('resume_key')
+        job_description_key = payload.get('job_description_key')
+        
+        # Check if this is a plain text query
         if 'query' in payload or 'message' in payload:
-            # Handle plain text queries/follow-up questions
             query = payload.get('query') or payload.get('message', '')
             logger.info(f"💬 Processing follow-up query: {query}")
             agent_stream = await process_query_with_strands_agents(query)
+        # JD-only analysis (no resume)
+        elif job_description_key and not resume_key:
+            logger.info("📋 Processing JD-only analysis")
+            agent_stream = await process_jd_only(bucket, job_description_key)
+        # Full resume + JD analysis
         else:
-            # Handle S3 document processing (original logic)
-            bucket = payload.get('bucket')
-            resume_key = payload.get('resume_key')
-            job_description_key = payload.get('job_description_key')
-            
-            logger.info(f"📂 Using bucket: {bucket}")
-            logger.info(f"📄 Resume key: {resume_key}")
-            logger.info(f"📋 Job description key: {job_description_key}")
-            
-            # Create/update session based on documents
-            get_or_create_session(resume_key, job_description_key)
-            
             if not resume_key:
                 logger.error("❌ Missing resume_key in payload")
                 raise ValueError("resume_key is required in payload")
             
             logger.info("🔄 Starting resume processing with Strands agents")
+            get_or_create_session(resume_key, job_description_key)
             agent_stream = await process_resume_with_strands_agents(bucket, resume_key, job_description_key)
+        
         tool_name = None
         event_count = 0
         
@@ -251,6 +249,52 @@ async def invoke(payload):
     except Exception as e:
         logger.error(f"❌ Error in agent stream processing: {str(e)}")
         yield f"Error: {str(e)}"
+
+async def process_jd_only(bucket: str, job_description_key: str):
+    """Process only job description to extract structured info"""
+    try:
+        logger.info(f"📥 Downloading JD from s3://{bucket}/{job_description_key}")
+        job_content = download_s3_file(bucket, job_description_key)
+        logger.info(f"✅ JD downloaded, length: {len(job_content)} characters")
+        
+        analyzer_agent = Agent(
+            model=MODEL_ID,
+            system_prompt="""You are a Job Analyzer Agent specializing in extracting job requirements.
+
+Analyze and extract:
+1. Required Qualifications (education, experience, skills, certifications)
+2. Preferred Qualifications (additional beneficial skills)
+3. Skills (technical, domain, soft skills, languages, proficiency, priority)
+4. Company Culture (environment, values, work style)
+5. Compensation and Benefits (if provided)
+
+Structure your response as a JSON object with these categories."""
+        )
+        
+        result = analyzer_agent(job_content)
+        jd_analysis = safe_extract_content(result)
+        
+        # Extract SO folder from job_description_key (e.g., SO-12345/jd/job.txt)
+        so_folder = job_description_key.split('/')[0]
+        s3_key = f"{so_folder}/analysis/jd.json"
+        
+        logger.info(f"💾 Saving JD analysis to s3://{bucket}/{s3_key}")
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=s3_key,
+            Body=jd_analysis,
+            ContentType='application/json'
+        )
+        logger.info(f"✅ JD analysis saved successfully")
+        
+        async def stream_result():
+            yield jd_analysis
+        
+        return stream_result()
+        
+    except Exception as e:
+        logger.error(f"❌ Error in JD processing: {str(e)}")
+        raise
 
 async def process_resume_with_strands_agents(bucket: str, resume_key: str, job_description_key: str) -> Dict[str, Any]:
     """Process resume using Strands multi-agent collaboration"""
