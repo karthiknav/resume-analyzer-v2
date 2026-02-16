@@ -142,59 +142,6 @@ Resources:
                   - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:aws:code-interpreter/*'
                   - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:code-interpreter/*'
 
-  # S3 Bucket for documents
-  DocumentsBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub 'amzn-s3-resume-analyzer-v2-bucket-${Environment}-${AWS::AccountId}'
-      VersioningConfiguration:
-        Status: Enabled
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-
-  # Lambda Execution Role
-  LambdaExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub 'ResumeAnalyzerLambdaRole-${Environment}'
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-      Policies:
-        - PolicyName: LambdaS3BedrockPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:ListBucket
-                Resource:
-                  - !GetAtt DocumentsBucket.Arn
-                  - !Sub '${DocumentsBucket.Arn}/*'
-              - Effect: Allow
-                Action:
-                  - bedrock-agentcore:InvokeAgentRuntime
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - dynamodb:PutItem
-                  - dynamodb:GetItem
-                  - dynamodb:UpdateItem
-                  - dynamodb:Query
-                Resource:
-                  - !GetAtt JobAnalysisTable.Arn
-                  - !GetAtt CandidateAnalysisTable.Arn
-
   # Lambda Function
   TriggerLambdaFunction:
     Type: AWS::Lambda::Function
@@ -223,59 +170,34 @@ Resources:
       Principal: s3.amazonaws.com
       SourceArn: !Sub 'arn:aws:s3:::amzn-s3-resume-analyzer-v2-bucket-${Environment}-${AWS::AccountId}'
 
-  # S3 Bucket Notification Configuration
-  BucketNotificationConfiguration:
-    Type: Custom::S3BucketNotification
+  # S3 Bucket for documents
+  DocumentsBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: LambdaInvokePermission
     Properties:
-      ServiceToken: !GetAtt S3NotificationFunction.Arn
-      BucketName: !Ref DocumentsBucket
-      LambdaFunctionArn: !GetAtt TriggerLambdaFunction.Arn
+      BucketName: !Sub 'amzn-s3-resume-analyzer-v2-bucket-${Environment}-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt TriggerLambdaFunction.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: opportunities/
 
-  # Custom Resource Lambda for S3 Notification
-  S3NotificationFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      Runtime: python3.12
-      Handler: index.handler
-      Role: !GetAtt S3NotificationRole.Arn
-      Timeout: 60
-      Code:
-        ZipFile: |
-          import boto3
-          import cfnresponse
-          
-          s3 = boto3.client('s3')
-          
-          def handler(event, context):
-              try:
-                  bucket = event['ResourceProperties']['BucketName']
-                  lambda_arn = event['ResourceProperties']['LambdaFunctionArn']
-                  
-                  if event['RequestType'] in ['Create', 'Update']:
-                      s3.put_bucket_notification_configuration(
-                          Bucket=bucket,
-                          NotificationConfiguration={
-                              'LambdaFunctionConfigurations': [{
-                                  'LambdaFunctionArn': lambda_arn,
-                                  'Events': ['s3:ObjectCreated:*']
-                              }]
-                          }
-                      )
-                  elif event['RequestType'] == 'Delete':
-                      s3.put_bucket_notification_configuration(
-                          Bucket=bucket,
-                          NotificationConfiguration={}
-                      )
-                  
-                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
-              except Exception as e:
-                  print(f"Error: {e}")
-                  cfnresponse.send(event, context, cfnresponse.FAILED, {})
-
-  # Role for S3 Notification Custom Resource
-  S3NotificationRole:
+  # Lambda Execution Role
+  LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: !Sub 'ResumeAnalyzerLambdaRole-${Environment}'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -286,15 +208,62 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: S3NotificationPolicy
+        - PolicyName: LambdaS3BedrockPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
-                  - s3:PutBucketNotification
-                  - s3:GetBucketNotification
-                Resource: !GetAtt DocumentsBucket.Arn
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:CopyObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::amzn-s3-resume-analyzer-v2-bucket-${Environment}-${AWS::AccountId}'
+                  - !Sub 'arn:aws:s3:::amzn-s3-resume-analyzer-v2-bucket-${Environment}-${AWS::AccountId}/*'
+              - Effect: Allow
+                Action:
+                  - bedrock-agentcore:InvokeAgentRuntime
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                Resource:
+                  - !GetAtt JobAnalysisTable.Arn
+                  - !GetAtt CandidateAnalysisTable.Arn
+                  - !GetAtt CountersTable.Arn
+
+  # Lambda Function
+  TriggerLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'ResumeAnalyzerTrigger-${Environment}'
+      Runtime: python3.12
+      Handler: lambda_trigger.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          AGENT_ARN: !Ref AgentArn
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          # Placeholder - will be updated by deployment script
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Placeholder'}
+
+  # Lambda Permission for S3
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TriggerLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::amzn-s3-resume-analyzer-v2-bucket-${Environment}-${AWS::AccountId}'
 
   # DynamoDB Table for Job Analysis
   JobAnalysisTable:
@@ -329,6 +298,19 @@ Resources:
           KeyType: RANGE
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
+
+  # DynamoDB Table for Counters
+  CountersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'Counters-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: counterId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: counterId
+          KeyType: HASH
 
 Outputs:
   DocumentsBucket:

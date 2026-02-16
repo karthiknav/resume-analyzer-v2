@@ -262,21 +262,46 @@ async def process_jd_only(bucket: str, job_description_key: str):
             system_prompt="""You are a Job Analyzer Agent specializing in extracting job requirements.
 
 Analyze and extract:
-1. Required Qualifications (education, experience, skills, certifications)
-2. Preferred Qualifications (additional beneficial skills)
-3. Skills (technical, domain, soft skills, languages, proficiency, priority)
-4. Company Culture (environment, values, work style)
-5. Compensation and Benefits (if provided)
+1. title: A suitable job title (e.g., "DevOps Engineer", "Data Scientist", "Solution Architect")
+2. client: Client/company name if mentioned
+3. keywords: List of key technical skills and technologies (e.g., ["AWS", "Python", "Kubernetes"])
+4. required_qualifications: Education, experience, skills, certifications
+5. preferred_qualifications: Additional beneficial skills
+6. skills: Technical, domain, soft skills with proficiency levels
+7. company_culture: Environment, values, work style
+8. compensation_benefits: Salary range and benefits if provided
 
-Structure your response as a JSON object with these categories."""
+Return ONLY a valid JSON object with these fields."""
         )
         
         result = analyzer_agent(job_content)
-        jd_analysis = safe_extract_content(result)
         
-        # Extract SO folder from job_description_key (e.g., SO-12345/jd/job.txt)
-        so_folder = job_description_key.split('/')[0]
-        s3_key = f"{so_folder}/analysis/jd.json"
+        # Extract JSON text from result.message.content[0]['text']
+        if hasattr(result, 'message') and 'content' in result.message:
+            content = result.message['content']
+            if isinstance(content, list) and len(content) > 0:
+                jd_text = content[0].get('text', '')
+            else:
+                jd_text = str(content)
+        else:
+            jd_text = safe_extract_content(result)
+        
+        logger.info(f"📝 Extracted text (first 200 chars): {jd_text[:200]}")
+        
+        # Extract JSON from markdown code blocks if present
+        if '```json' in jd_text:
+            jd_text = jd_text.split('```json')[1].split('```')[0].strip()
+        elif '```' in jd_text:
+            jd_text = jd_text.split('```')[1].split('```')[0].strip()
+        
+        logger.info(f"📝 Cleaned text (first 200 chars): {jd_text[:200]}")
+        
+        jd_json = json.loads(jd_text)
+        jd_analysis = json.dumps(jd_json, ensure_ascii=False)
+        
+        # Extract folder path from job_description_key (e.g., opportunities/SO-12345/jd/job.txt)
+        jd_folder = '/'.join(job_description_key.split('/')[:-1])  # Gets "opportunities/SO-12345/jd"
+        s3_key = f"{jd_folder}/jd.json"
         
         logger.info(f"💾 Saving JD analysis to s3://{bucket}/{s3_key}")
         s3_client.put_object(
@@ -288,7 +313,7 @@ Structure your response as a JSON object with these categories."""
         logger.info(f"✅ JD analysis saved successfully")
         
         async def stream_result():
-            yield jd_analysis
+            yield json.dumps({"status": "success", "message": "JD analysis completed", "s3_key": s3_key})
         
         return stream_result()
         
@@ -645,9 +670,9 @@ if __name__ == "__main__":
     # async def test():
     #     # First call with document payload to create session
     #     document_payload = {
-    #         "bucket": "amzn-s3-resume-analyzer-bucket-agentcore-206409480438",
-    #         "resume_key": "resumes/20251125_124020_john_smith_resume.txt",
-    #         "job_description_key": "jobs/20251125_132758_job_description.txt"
+    #         "bucket": "amzn-s3-resume-analyzer-v2-bucket-agentcore-206409480438",
+    #         #"resume_key": "resumes/20251125_124020_john_smith_resume.txt",
+    #         "job_description_key": "opportunities/SAMPLE_SO_1234/jd/sample_job_description_senior_java_cloud_engineer.pdf"
     #     }
         
     #     print("=== First call: Processing documents ===")
@@ -655,17 +680,6 @@ if __name__ == "__main__":
     #     async for chunk in invoke(document_payload):
     #         response1 += str(chunk)
     #     print(f"Document processing result: {response1[:200]}...")
-        
-    #     # Second call with query only - should use existing session
-    #     query_payload = {
-    #         "query": "What is the candidate's overall score?"
-    #     }
-        
-    #     print("\n=== Second call: Follow-up query ===")
-    #     response2 = ""
-    #     async for chunk in invoke(query_payload):
-    #         response2 += str(chunk)
-    #     print(f"Query result: {response2[:200]}...")
     
     # asyncio.run(test())
     app.run()

@@ -2,17 +2,19 @@ import json
 import boto3
 import os
 import urllib.parse
+import time
 from datetime import datetime
 
 agentcore_client = boto3.client('bedrock-agentcore')
 s3_client = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
 
-AGENT_ARN = os.environ['AGENT_ARN']
+AGENT_ARN = 'arn:aws:bedrock-agentcore:us-east-1:206409480438:runtime/resume_analyzer_agent-j2SNsc9Nf9'
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'agentcore')
 
-job_table = dynamodb.Table(f'JobAnalysis-{ENVIRONMENT}')
-candidate_table = dynamodb.Table(f'CandidateAnalysis-{ENVIRONMENT}')
+job_table = dynamodb.Table(f'JobAnalysis-agentcore')
+candidate_table = dynamodb.Table(f'CandidateAnalysis-agentcore')
+counter_table = dynamodb.Table(f'Counters-agentcore')  # New counter table
 
 def lambda_handler(event, context):
     """Triggered when JD or resume is uploaded to S3"""
@@ -21,8 +23,14 @@ def lambda_handler(event, context):
     key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
     
     parts = key.split('/')
+    
+    # Handle root-level JD upload: opportunities/sample.pdf
+    if len(parts) == 2 and parts[0] == 'opportunities':
+        return handle_root_jd_upload(bucket, key)
+    
+    # Only process files in nested structure: opportunities/SO-XXX/jd|resumes/file
     if len(parts) < 3:
-        return {'statusCode': 400, 'body': 'Invalid key structure'}
+        return {'statusCode': 200, 'body': 'Skipping - not in expected folder structure'}
     
     so_folder = parts[0]
     folder_type = parts[1]
@@ -78,9 +86,10 @@ def lambda_handler(event, context):
                 "candidate_id": candidate_id
             }
             
-            agentcore_client.invoke_agent_runtime(
+            boto3_response = agentcore_client.invoke_agent_runtime(
                 agentRuntimeArn=AGENT_ARN,
                 qualifier="DEFAULT",
+                runtimeSessionId=f"resume-{job_description_id}-{candidate_id}",
                 payload=json.dumps(payload)
             )
         
@@ -130,12 +139,81 @@ def lambda_handler(event, context):
             "job_description_id": job_description_id,
             "candidate_id": candidate_id
         }
-        agentcore_client.invoke_agent_runtime(
+        boto3_response = agentcore_client.invoke_agent_runtime(
             agentRuntimeArn=AGENT_ARN,
             qualifier="DEFAULT",
+            runtimeSessionId=f"resume-{job_description_id}-{candidate_id}",
             payload=json.dumps(payload)
         )
         
         return {'statusCode': 200, 'body': json.dumps(f'Resume uploaded: Processed against {jd_key}')}
     
     return {'statusCode': 400, 'body': 'Invalid folder type'}
+
+def handle_root_jd_upload(bucket, original_key):
+    """Handle JD uploaded directly to opportunities/ folder"""
+    # Get next ID from DynamoDB counter
+    response = counter_table.update_item(
+        Key={'counterId': 'opportunity_id'},
+        UpdateExpression='ADD currentValue :inc',
+        ExpressionAttributeValues={':inc': 1},
+        ReturnValues='UPDATED_NEW'
+    )
+    counter_value = int(response['Attributes']['currentValue'])
+    so_id = f"SO_{counter_value:06d}"
+    
+    new_jd_key = f"opportunities/{so_id}/jd/{original_key.split('/')[-1]}"
+    
+    s3_client.copy_object(
+        Bucket=bucket,
+        CopySource={'Bucket': bucket, 'Key': original_key},
+        Key=new_jd_key
+    )
+    s3_client.delete_object(Bucket=bucket, Key=original_key)
+    
+    # Invoke agent and get streaming response
+    payload = {"bucket": bucket, "job_description_key": new_jd_key}
+    boto3_response = agentcore_client.invoke_agent_runtime(
+        agentRuntimeArn=AGENT_ARN,
+        qualifier="DEFAULT",
+        payload=json.dumps(payload)
+    )
+    
+    # Wait for jd.json to be created
+    jd_json_key = f"opportunities/{so_id}/jd/jd.json"
+    max_retries = 10
+    for i in range(max_retries):
+        try:
+            jd_data = json.loads(s3_client.get_object(Bucket=bucket, Key=jd_json_key)['Body'].read())
+            break
+        except s3_client.exceptions.NoSuchKey:
+            if i < max_retries - 1:
+                time.sleep(2)
+            else:
+                raise
+    
+    job_table.put_item(Item={
+        'jobDescriptionId': so_id,
+        'title': jd_data.get('title', 'N/A'),
+        'client': jd_data.get('client', 'N/A'),
+        'keywords': jd_data.get('keywords', []),
+        's3Key': jd_json_key,
+        'createdAt': datetime.utcnow().isoformat(),
+        'status': 'ACTIVE'
+    })
+    
+    return {'statusCode': 200, 'body': json.dumps(f'Created opportunity {so_id}')}
+
+if __name__ == "__main__":
+    # Local testing
+    test_event = {
+        'Records': [{
+            's3': {
+                'bucket': {'name': 'amzn-s3-resume-analyzer-v2-bucket-agentcore-206409480438'},
+                'object': {'key': 'opportunities/sample_job_description_senior_java_cloud_engineer.pdf'}
+            }
+        }]
+    }
+    
+    result = lambda_handler(test_event, None)
+    print(json.dumps(result, indent=2))
