@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Resume Analyzer — XXXXX Consulting Group</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================
+   CSS VARIABLES & RESET
+   ============================================ */
+:root {
+  --bg-primary: #F7F8FC;
+  --bg-white: #FFFFFF;
+  --bg-sidebar: #1B2A4A;
+  --bg-sidebar-hover: #243558;
+  --bg-sidebar-active: #2D4270;
+
+  --accent-primary: #2563EB;
+  --accent-primary-light: #DBEAFE;
+  --accent-primary-dark: #1D4ED8;
+  --accent-green: #059669;
+  --accent-green-light: #D1FAE5;
+  --accent-green-bg: #ECFDF5;
+  --accent-amber: #D97706;
+  --accent-amber-light: #FEF3C7;
+  --accent-amber-bg: #FFFBEB;
+  --accent-red: #DC2626;
+  --accent-red-light: #FEE2E2;
+  --accent-purple: #7C3AED;
+  --accent-purple-light: #EDE9FE;
+  --accent-slate: #64748B;
+  --accent-cyan: #0891B2;
+  --accent-cyan-light: #CFFAFE;
+
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-tertiary: #94A3B8;
+  --text-inverse: #F8FAFC;
+
+  --border: #E2E8F0;
+  --border-strong: #CBD5E1;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+  --shadow-lg: 0 8px 30px rgba(0,0,0,0.08);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.04);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --font-sans: 'DM Sans', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================
+   LAYOUT
+   ============================================ */
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ============================================
+   SIDEBAR
+   ============================================ */
+.sidebar {
+  width: 260px;
+  background: var(--bg-sidebar);
+  color: var(--text-inverse);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 100;
+  transition: transform 0.3s ease;
+}
+
+.sidebar-header {
+  padding: 24px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sidebar-logo-icon {
+  width: 38px;
+  height: 38px;
+  background: var(--accent-primary);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.sidebar-logo-text h1 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  line-height: 1.2;
+}
+
+.sidebar-logo-text span {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-tertiary);
+  padding: 16px 12px 8px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.7);
+  text-decoration: none;
+}
+
+.nav-item:hover { background: var(--bg-sidebar-hover); color: #fff; }
+.nav-item.active { background: var(--bg-sidebar-active); color: #fff; }
+
+.nav-item .icon { font-size: 18px; width: 22px; text-align: center; }
+
+.nav-badge {
+  margin-left: auto;
+  background: var(--accent-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 50px;
+}
+
+.sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sidebar-footer .avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.sidebar-footer .user-info { font-size: 13px; line-height: 1.3; }
+.sidebar-footer .user-info span { display: block; font-size: 11px; color: var(--text-tertiary); }
+
+/* ============================================
+   MAIN CONTENT
+   ============================================ */
+.main-content {
+  flex: 1;
+  margin-left: 260px;
+  min-height: 100vh;
+}
+
+/* ============================================
+   TOP BAR
+   ============================================ */
+.topbar {
+  background: var(--bg-white);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.topbar-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.topbar-breadcrumb a {
+  color: var(--text-tertiary);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.topbar-breadcrumb a:hover { color: var(--accent-primary); }
+.topbar-breadcrumb .current { color: var(--text-primary); font-weight: 600; }
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-green);
+}
+.topbar-status .dot {
+  width: 7px;
+  height: 7px;
+  background: var(--accent-green);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ============================================
+   PAGE CONTAINER
+   ============================================ */
+.page { padding: 28px 32px; }
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.page-header h2 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: var(--text-primary);
+}
+
+.page-header-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  color: #fff;
+}
+.btn-primary:hover { background: var(--accent-primary-dark); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+
+.btn-outline {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.btn-outline:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.btn-ghost:hover { color: var(--accent-primary); background: var(--accent-primary-light); }
+
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+
+/* ============================================
+   STATUS BADGES
+   ============================================ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 50px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-new { background: var(--accent-primary-light); color: var(--accent-primary); }
+.badge-progress { background: var(--accent-amber-light); color: var(--accent-amber); }
+.badge-analyzed { background: var(--accent-green-light); color: var(--accent-green); }
+.badge-closed { background: #F1F5F9; color: var(--text-tertiary); }
+
+.badge .dot-sm {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.badge-new .dot-sm { background: var(--accent-primary); }
+.badge-progress .dot-sm { background: var(--accent-amber); }
+.badge-analyzed .dot-sm { background: var(--accent-green); }
+.badge-closed .dot-sm { background: var(--text-tertiary); }
+
+/* ============================================
+   STAT CARDS (top row)
+   ============================================ */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.stat-card .label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
+}
+
+.stat-card .value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  color: var(--text-primary);
+}
+
+.stat-card .value.accent-blue { color: var(--accent-primary); }
+.stat-card .value.accent-green { color: var(--accent-green); }
+.stat-card .value.accent-amber { color: var(--accent-amber); }
+
+.stat-card .change {
+  font-size: 12px;
+  color: var(--accent-green);
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* ============================================
+   SCREEN 1: OPPORTUNITY LIST
+   ============================================ */
+.opportunity-table {
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.opportunity-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.opportunity-table-header h3 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.table-filters {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-btn {
+  padding: 5px 14px;
+  border-radius: 50px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-btn.active, .filter-btn:hover {
+  background: var(--accent-primary);
+  color: #fff;
+  border-color: var(--accent-primary);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  padding: 12px 24px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-tertiary);
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+}
+
+tbody tr {
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+tbody tr:hover { background: #F8FAFF; }
+tbody tr:last-child { border-bottom: none; }
+
+tbody td {
+  padding: 16px 24px;
+  font-size: 14px;
+}
+
+.opp-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.opp-title:hover { color: var(--accent-primary); }
+
+.opp-client {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.opp-meta { color: var(--text-secondary); font-size: 13px; }
+
+.candidates-count {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.action-link {
+  color: var(--accent-primary);
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: gap 0.15s;
+}
+.action-link:hover { gap: 8px; }
+
+/* ============================================
+   SCREEN 2: ANALYSIS DASHBOARD
+   ============================================ */
+.analysis-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 20px;
+}
+
+/* --- Left Panel: JD + Candidate List --- */
+.left-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-header h3 {
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-body { padding: 16px 20px; }
+
+/* JD Requirements */
+.jd-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 50px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--accent-primary-light);
+  color: var(--accent-primary);
+  margin: 3px;
+}
+
+.jd-requirement-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 12px;
+  line-height: 1.7;
+}
+
+/* Candidate List */
+.candidate-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.12s;
+  gap: 12px;
+  margin: 4px 0;
+}
+.candidate-item:hover { background: var(--bg-primary); }
+.candidate-item.active { background: var(--accent-primary-light); border: 1px solid rgba(37,99,235,0.15); }
+
+.candidate-rank {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.rank-1 { background: #FEF3C7; color: #B45309; }
+.rank-2 { background: #F1F5F9; color: #64748B; }
+.rank-3 { background: #FED7AA; color: #C2410C; }
+.rank-4 { background: #F1F5F9; color: #94A3B8; }
+
+.candidate-info { flex: 1; min-width: 0; }
+.candidate-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.candidate-level {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 1px;
+}
+
+.candidate-score {
+  text-align: right;
+  flex-shrink: 0;
+}
+.score-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+.score-high { color: var(--accent-green); }
+.score-medium { color: var(--accent-amber); }
+.score-low { color: var(--accent-red); }
+
+.score-breakdown {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-top: 1px;
+  font-family: var(--font-mono);
+}
+
+/* --- Right Panel: Analysis Detail --- */
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Profile Header */
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 24px;
+}
+
+.profile-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-purple));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.profile-info h3 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.profile-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.profile-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.overall-score {
+  margin-left: auto;
+  text-align: center;
+}
+
+.overall-score-value {
+  font-size: 40px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  color: var(--accent-green);
+  line-height: 1;
+}
+
+.overall-score-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
+/* Score Bars */
+.score-bars {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 0 24px 20px;
+}
+
+.score-bar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.score-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+}
+.score-bar-label span:last-child {
+  font-family: var(--font-mono);
+  color: var(--accent-primary);
+}
+
+.score-bar-track {
+  height: 6px;
+  background: var(--bg-primary);
+  border-radius: 50px;
+  overflow: hidden;
+}
+
+.score-bar-fill {
+  height: 100%;
+  border-radius: 50px;
+  transition: width 0.6s ease;
+}
+.fill-blue { background: var(--accent-primary); }
+.fill-green { background: var(--accent-green); }
+.fill-amber { background: var(--accent-amber); }
+
+/* Core Skills Checklist */
+.skills-check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.skill-check-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  font-size: 13px;
+}
+
+.skill-check-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.check-pass { background: var(--accent-green-light); color: var(--accent-green); }
+.check-partial { background: var(--accent-amber-light); color: var(--accent-amber); }
+.check-fail { background: var(--accent-red-light); color: var(--accent-red); }
+
+.skill-check-detail {
+  flex: 1;
+  min-width: 0;
+}
+.skill-check-name { font-weight: 600; }
+.skill-check-years { font-size: 11px; color: var(--text-tertiary); }
+
+/* Domain Skills Table */
+.domain-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.domain-table thead th {
+  padding: 10px 16px;
+  background: var(--bg-primary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-tertiary);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.domain-table tbody td {
+  padding: 12px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.domain-table tbody tr:last-child td { border-bottom: none; }
+
+.priority-high { color: var(--accent-red); font-weight: 600; }
+.priority-medium { color: var(--accent-amber); font-weight: 600; }
+.priority-low { color: var(--accent-green); font-weight: 600; }
+
+.level-expert { color: var(--accent-green); font-weight: 600; }
+.level-strong { color: var(--accent-primary); font-weight: 600; }
+.level-basic { color: var(--accent-amber); font-weight: 600; }
+
+.evidence-text { color: var(--text-secondary); font-style: italic; font-size: 12px; }
+
+/* Evidence Snippets */
+.evidence-snippet {
+  padding: 10px 14px;
+  background: var(--bg-primary);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.6;
+}
+
+/* Gaps & Risks */
+.gap-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #FFF7ED;
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.gap-icon {
+  color: var(--accent-amber);
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.recommendation-box {
+  padding: 14px 18px;
+  background: var(--accent-green-bg);
+  border: 1px solid rgba(5,150,105,0.15);
+  border-radius: var(--radius-md);
+  margin-top: 12px;
+}
+
+.recommendation-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-green);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.recommendation-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* Chat Section */
+.chat-section {
+  border-top: 1px solid var(--border);
+}
+
+.chat-messages {
+  padding: 16px 20px;
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-msg {
+  display: flex;
+  gap: 10px;
+  max-width: 85%;
+}
+.chat-msg.user { align-self: flex-end; flex-direction: row-reverse; }
+
+.chat-msg-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.chat-msg.agent .chat-msg-avatar { background: var(--accent-primary-light); color: var(--accent-primary); }
+.chat-msg.user .chat-msg-avatar { background: var(--accent-green-light); color: var(--accent-green); }
+
+.chat-msg-bubble {
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.chat-msg.agent .chat-msg-bubble { background: var(--bg-primary); color: var(--text-secondary); }
+.chat-msg.user .chat-msg-bubble { background: var(--accent-primary); color: #fff; }
+
+.chat-input-row {
+  display: flex;
+  gap: 10px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.chat-input {
+  flex: 1;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 50px;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.chat-input:focus { border-color: var(--accent-primary); }
+.chat-input::placeholder { color: var(--text-tertiary); }
+
+.chat-send {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.chat-send:hover { background: var(--accent-primary-dark); }
+
+/* ============================================
+   TWO-COL GRID INSIDE CARDS
+   ============================================ */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* ============================================
+   SCREEN TOGGLE (for demo)
+   ============================================ */
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in {
+  animation: fadeInUp 0.35s ease forwards;
+}
+
+.delay-1 { animation-delay: 0.05s; opacity: 0; }
+.delay-2 { animation-delay: 0.1s; opacity: 0; }
+.delay-3 { animation-delay: 0.15s; opacity: 0; }
+.delay-4 { animation-delay: 0.2s; opacity: 0; }
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 1200px) {
+  .analysis-layout { grid-template-columns: 1fr; }
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+  .sidebar { transform: translateX(-100%); }
+  .main-content { margin-left: 0; }
+  .stats-row { grid-template-columns: 1fr; }
+  .two-col { grid-template-columns: 1fr; }
+  .score-bars { grid-template-columns: 1fr; }
+  .skills-check-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="app-layout">
+
+  <!-- ====== SIDEBAR ====== -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-icon">⚡</div>
+        <div class="sidebar-logo-text">
+          <h1>Resume Analyzer</h1>
+          <span>XXXXX Consulting Group</span>
+        </div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-label">Main</div>
+      <a class="nav-item active" onclick="showScreen('opportunities')">
+        <span class="icon">📋</span> Opportunities <span class="nav-badge">7</span>
+      </a>
+      <a class="nav-item" onclick="showScreen('analysis')">
+        <span class="icon">📊</span> Analysis
+      </a>
+      <a class="nav-item">
+        <span class="icon">👥</span> Candidate Pool
+      </a>
+
+      <div class="nav-label">Admin</div>
+      <a class="nav-item">
+        <span class="icon">📄</span> JD Templates
+      </a>
+      <a class="nav-item">
+        <span class="icon">⚙️</span> Settings
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="avatar">SM</div>
+      <div class="user-info">
+        Sharaf M.
+        <span>Solutions Architect</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ====== MAIN CONTENT ====== -->
+  <main class="main-content">
+
+    <!-- ====== TOP BAR ====== -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="topbar-breadcrumb">
+          <a href="#" onclick="showScreen('opportunities')">Opportunities</a>
+          <span id="breadcrumb-separator" style="display:none;"> › </span>
+          <span id="breadcrumb-current" class="current" style="display:none;">Devops Architect — Rabo Bank</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-status">
+          <span class="dot"></span> All agents online
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         SCREEN 1: OPPORTUNITY DASHBOARD
+         ============================================================ -->
+    <div id="screen-opportunities" class="screen active">
+      <div class="page">
+        <div class="page-header">
+          <div>
+            <h2>Job Openings</h2>
+            <p class="page-header-subtitle">Manage client opportunities and candidate matching</p>
+          </div>
+          <button class="btn btn-primary">+ New Opportunity</button>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="stats-row">
+          <div class="stat-card animate-in delay-1">
+            <div class="label">Total Openings</div>
+            <div class="value">7</div>
+          </div>
+          <div class="stat-card animate-in delay-2">
+            <div class="label">Candidates Analyzed</div>
+            <div class="value accent-blue">23</div>
+          </div>
+          <div class="stat-card animate-in delay-3">
+            <div class="label">Avg. Match Score</div>
+            <div class="value accent-green">78%</div>
+          </div>
+          <div class="stat-card animate-in delay-4">
+            <div class="label">Avg. Analysis Time</div>
+            <div class="value accent-amber">42s</div>
+          </div>
+        </div>
+
+        <!-- Opportunity Table -->
+        <div class="opportunity-table animate-in delay-2">
+          <div class="opportunity-table-header">
+            <h3>Active Opportunities</h3>
+            <div class="table-filters">
+              <button class="filter-btn active">All</button>
+              <button class="filter-btn">New</button>
+              <button class="filter-btn">In Progress</button>
+              <button class="filter-btn">Analyzed</button>
+              <button class="filter-btn">Closed</button>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Opportunity</th>
+                <th>Client</th>
+                <th>Status</th>
+                <th>Candidates</th>
+                <th>Top Score</th>
+                <th>Created</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr onclick="openAnalysis('Devops Architect — Rabo Bank')">
+                <td>
+                  <div class="opp-title">Devops Architect</div>
+                  <div class="opp-client">AWS, IaC, Docker, Ansible, CloudFormation</div>
+                </td>
+                <td class="opp-meta">Rabo Bank</td>
+                <td><span class="badge badge-analyzed"><span class="dot-sm"></span> Analyzed</span></td>
+                <td><span class="candidates-count">4</span></td>
+                <td><span class="candidates-count score-high">85%</span></td>
+                <td class="opp-meta">10 Feb 2026</td>
+                <td><a class="action-link" href="#">View →</a></td>
+              </tr>
+              <tr onclick="openAnalysis('AI Engineer — Rabo Bank')">
+                <td>
+                  <div class="opp-title">AI Engineer</div>
+                  <div class="opp-client">Python, LLM, RAG, Agentic AI, NLP</div>
+                </td>
+                <td class="opp-meta">Rabo Bank</td>
+                <td><span class="badge badge-progress"><span class="dot-sm"></span> In Progress</span></td>
+                <td><span class="candidates-count">3</span></td>
+                <td><span class="candidates-count score-high">82%</span></td>
+                <td class="opp-meta">12 Feb 2026</td>
+                <td><a class="action-link" href="#">View →</a></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="opp-title">Java Architect</div>
+                  <div class="opp-client">Java 17+, Spring Boot, Microservices, K8s</div>
+                </td>
+                <td class="opp-meta">ING</td>
+                <td><span class="badge badge-new"><span class="dot-sm"></span> New</span></td>
+                <td><span class="candidates-count">0</span></td>
+                <td><span class="candidates-count" style="color:var(--text-tertiary);">—</span></td>
+                <td class="opp-meta">14 Feb 2026</td>
+                <td><a class="action-link" href="#">Analyze →</a></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="opp-title">Data Engineer</div>
+                  <div class="opp-client">Spark, Databricks, Python, SQL, Azure</div>
+                </td>
+                <td class="opp-meta">ABN AMRO</td>
+                <td><span class="badge badge-new"><span class="dot-sm"></span> New</span></td>
+                <td><span class="candidates-count">0</span></td>
+                <td><span class="candidates-count" style="color:var(--text-tertiary);">—</span></td>
+                <td class="opp-meta">15 Feb 2026</td>
+                <td><a class="action-link" href="#">Analyze →</a></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="opp-title">Cloud Security Engineer</div>
+                  <div class="opp-client">AWS, IAM, SIEM, Compliance, Terraform</div>
+                </td>
+                <td class="opp-meta">Rabo Bank</td>
+                <td><span class="badge badge-closed"><span class="dot-sm"></span> Closed</span></td>
+                <td><span class="candidates-count">6</span></td>
+                <td><span class="candidates-count score-high">91%</span></td>
+                <td class="opp-meta">02 Feb 2026</td>
+                <td><a class="action-link" href="#" style="color:var(--text-tertiary);">Archive</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         SCREEN 2: ANALYSIS DASHBOARD
+         ============================================================ -->
+    <div id="screen-analysis" class="screen">
+      <div class="page">
+        <div class="page-header">
+          <div>
+            <h2 id="analysis-title">Devops Architect — Rabo Bank</h2>
+            <p class="page-header-subtitle">JD Analysis & Candidate Matching</p>
+          </div>
+          <div style="display:flex;gap:10px;">
+            <button class="btn btn-outline" onclick="showScreen('opportunities')">← Back</button>
+            <button class="btn btn-primary">📄 Export Report</button>
+          </div>
+        </div>
+
+        <div class="analysis-layout">
+
+          <!-- ====== LEFT PANEL ====== -->
+          <div class="left-panel">
+
+            <!-- JD Requirements Card -->
+            <div class="card animate-in delay-1">
+              <div class="card-header">
+                <h3>📋 JD Requirements</h3>
+                <span class="badge badge-analyzed"><span class="dot-sm"></span> Cached</span>
+              </div>
+              <div class="card-body">
+                <div style="margin-bottom:10px;">
+                  <span class="jd-tag">AWS (12 yrs)</span>
+                  <span class="jd-tag">IaC (5 yrs)</span>
+                  <span class="jd-tag">AWS CodePipeline</span>
+                  <span class="jd-tag">Docker</span>
+                  <span class="jd-tag">Ansible</span>
+                  <span class="jd-tag">CloudFormation</span>
+                </div>
+                <p class="jd-requirement-text">
+                  Senior Devops Architect with 12+ years AWS experience. Must demonstrate expertise in Infrastructure as Code, CI/CD pipelines, container orchestration, and configuration management for banking-grade environments.
+                </p>
+              </div>
+            </div>
+
+            <!-- Ranked Candidates Card -->
+            <div class="card animate-in delay-2">
+              <div class="card-header">
+                <h3>👥 Ranked Candidates</h3>
+                <span style="font-size:12px;color:var(--text-tertiary);">4 analyzed</span>
+              </div>
+              <div class="card-body" style="padding:8px 12px;">
+
+                <div class="candidate-item active" onclick="selectCandidate(this, 'RK')">
+                  <div class="candidate-rank rank-1">1</div>
+                  <div class="candidate-info">
+                    <div class="candidate-name">Ramesh Kumar</div>
+                    <div class="candidate-level">Senior • 14 yrs exp</div>
+                  </div>
+                  <div class="candidate-score">
+                    <div class="score-value score-high">85%</div>
+                    <div class="score-breakdown">Core 90 • Dom 85 • Soft 85</div>
+                  </div>
+                </div>
+
+                <div class="candidate-item" onclick="selectCandidate(this, 'IK')">
+                  <div class="candidate-rank rank-2">2</div>
+                  <div class="candidate-info">
+                    <div class="candidate-name">Ishan Kishan</div>
+                    <div class="candidate-level">Senior • 11 yrs exp</div>
+                  </div>
+                  <div class="candidate-score">
+                    <div class="score-value score-high">80%</div>
+                    <div class="score-breakdown">Core 80 • Dom 65 • Soft 70</div>
+                  </div>
+                </div>
+
+                <div class="candidate-item" onclick="selectCandidate(this, 'AP')">
+                  <div class="candidate-rank rank-3">3</div>
+                  <div class="candidate-info">
+                    <div class="candidate-name">Axar Patel</div>
+                    <div class="candidate-level">Senior • 10 yrs exp</div>
+                  </div>
+                  <div class="candidate-score">
+                    <div class="score-value score-medium">75%</div>
+                    <div class="score-breakdown">Core 80 • Dom 50 • Soft 75</div>
+                  </div>
+                </div>
+
+                <div class="candidate-item" onclick="selectCandidate(this, 'SG')">
+                  <div class="candidate-rank rank-4">4</div>
+                  <div class="candidate-info">
+                    <div class="candidate-name">Shubham Gill</div>
+                    <div class="candidate-level">Mid • 6 yrs exp</div>
+                  </div>
+                  <div class="candidate-score">
+                    <div class="score-value score-medium">68%</div>
+                    <div class="score-breakdown">Core 70 • Dom 65 • Soft 75</div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Upload section -->
+            <div class="card animate-in delay-3">
+              <div class="card-body" style="text-align:center; padding:24px;">
+                <div style="font-size:32px;margin-bottom:8px;">📎</div>
+                <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Upload New Resume</div>
+                <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:14px;">PDF or DOCX • Max 10MB</div>
+                <button class="btn btn-primary btn-sm">Choose File & Analyze</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ====== RIGHT PANEL ====== -->
+          <div class="right-panel">
+
+            <!-- Profile Card -->
+            <div class="card animate-in delay-1">
+              <div class="profile-header">
+                <div class="profile-avatar" id="profile-avatar">RK</div>
+                <div class="profile-info">
+                  <h3 id="profile-name">Ramesh Kumar</h3>
+                  <div class="profile-meta">
+                    <span class="profile-meta-item">🎯 Senior Engineer</span>
+                    <span class="profile-meta-item">📅 14 yrs experience</span>
+                    <span class="profile-meta-item">📍 Netherlands</span>
+                  </div>
+                </div>
+                <div class="overall-score">
+                  <div class="overall-score-value">85%</div>
+                  <div class="overall-score-label">Overall Match</div>
+                </div>
+              </div>
+              <div class="score-bars">
+                <div class="score-bar-item">
+                  <div class="score-bar-label">
+                    <span>Core Skills</span>
+                    <span>90%</span>
+                  </div>
+                  <div class="score-bar-track"><div class="score-bar-fill fill-blue" style="width:90%"></div></div>
+                </div>
+                <div class="score-bar-item">
+                  <div class="score-bar-label">
+                    <span>Domain</span>
+                    <span>85%</span>
+                  </div>
+                  <div class="score-bar-track"><div class="score-bar-fill fill-green" style="width:85%"></div></div>
+                </div>
+                <div class="score-bar-item">
+                  <div class="score-bar-label">
+                    <span>Soft Skills</span>
+                    <span>85%</span>
+                  </div>
+                  <div class="score-bar-track"><div class="score-bar-fill fill-amber" style="width:85%"></div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Two Column: Core Skills + Domain Skills -->
+            <div class="two-col">
+
+              <!-- Core Skills Checklist -->
+              <div class="card animate-in delay-2">
+                <div class="card-header">
+                  <h3>✅ Core Skills Match</h3>
+                </div>
+                <div class="card-body">
+                  <div class="skills-check-grid">
+                    <div class="skill-check-item">
+                      <div class="skill-check-icon check-pass">✓</div>
+                      <div class="skill-check-detail">
+                        <div class="skill-check-name">AWS</div>
+                        <div class="skill-check-years">12 yrs • Expert</div>
+                      </div>
+                    </div>
+                    <div class="skill-check-item">
+                      <div class="skill-check-icon check-pass">✓</div>
+                      <div class="skill-check-detail">
+                        <div class="skill-check-name">IaC</div>
+                        <div class="skill-check-years">5 yrs • Strong</div>
+                      </div>
+                    </div>
+                    <div class="skill-check-item">
+                      <div class="skill-check-icon check-pass">✓</div>
+                      <div class="skill-check-detail">
+                        <div class="skill-check-name">AWS CodePipeline</div>
+                        <div class="skill-check-years">6 yrs • Strong</div>
+                      </div>
+                    </div>
+                    <div class="skill-check-item">
+                      <div class="skill-check-icon check-pass">✓</div>
+                      <div class="skill-check-detail">
+                        <div class="skill-check-name">Docker</div>
+                        <div class="skill-check-years">10 yrs • Expert</div>
+                      </div>
+                    </div>
+                    <div class="skill-check-item">
+                      <div class="skill-check-icon check-pass">✓</div>
+                      <div class="skill-check-detail">
+                        <div class="skill-check-name">Ansible</div>
+                        <div class="skill-check-years">8 yrs • Expert</div>
+                      </div>
+                    </div>
+                    <div class="skill-check-item">
+                      <div class="skill-check-icon check-pass">✓</div>
+                      <div class="skill-check-detail">
+                        <div class="skill-check-name">CloudFormation</div>
+                        <div class="skill-check-years">5 yrs • Strong</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Domain Skills Table -->
+              <div class="card animate-in delay-3">
+                <div class="card-header">
+                  <h3>🏢 Domain Skills</h3>
+                </div>
+                <div class="card-body" style="padding:0;">
+                  <table class="domain-table">
+                    <thead>
+                      <tr>
+                        <th>Domain Skill</th>
+                        <th>JD Priority</th>
+                        <th>Level</th>
+                        <th>Evidence</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td style="font-weight:600;">AI Solution Architecture</td>
+                        <td><span class="priority-high">High</span></td>
+                        <td><span class="level-expert">Expert</span></td>
+                        <td class="evidence-text">Led multiple enterprise AI implementations</td>
+                      </tr>
+                      <tr>
+                        <td style="font-weight:600;">Process Automation</td>
+                        <td><span class="priority-high">High</span></td>
+                        <td><span class="level-expert">Expert</span></td>
+                        <td class="evidence-text">Business transformation projects</td>
+                      </tr>
+                      <tr>
+                        <td style="font-weight:600;">Enterprise Integration</td>
+                        <td><span class="priority-medium">Medium</span></td>
+                        <td><span class="level-strong">Strong</span></td>
+                        <td class="evidence-text">Fortune 500 company experience</td>
+                      </tr>
+                      <tr>
+                        <td style="font-weight:600;">Team Leadership</td>
+                        <td><span class="priority-medium">Medium</span></td>
+                        <td><span class="level-strong">Strong</span></td>
+                        <td class="evidence-text">Led multiple technical teams</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Two Column: Evidence + Gaps -->
+            <div class="two-col">
+
+              <!-- Evidence Snippets -->
+              <div class="card animate-in delay-3">
+                <div class="card-header">
+                  <h3>📝 Evidence Snippets</h3>
+                </div>
+                <div class="card-body">
+                  <div class="evidence-snippet">
+                    "34+ AI Models deployed across different functions in Organization"
+                  </div>
+                  <div class="evidence-snippet">
+                    "Designing revolutionary Human-in-the-Loop frameworks enabling seamless collaboration between 13000+ manufacturing professionals"
+                  </div>
+                  <div class="evidence-snippet">
+                    "Expert in Agentic AI, RAG implementation, and multi-agent orchestration systems"
+                  </div>
+                  <div class="evidence-snippet">
+                    "Created algorithmic approaches to organizational structure optimization reducing management layers by 23%"
+                  </div>
+                </div>
+              </div>
+
+              <!-- Gaps & Risks -->
+              <div class="card animate-in delay-4">
+                <div class="card-header">
+                  <h3>⚠️ Gaps &amp; Risks</h3>
+                </div>
+                <div class="card-body">
+                  <div class="gap-item">
+                    <span class="gap-icon">⚠</span>
+                    <span>Computer vision experience not explicitly demonstrated</span>
+                  </div>
+                  <div class="gap-item">
+                    <span class="gap-icon">⚠</span>
+                    <span>Specific NLP project details need verification</span>
+                  </div>
+                  <div class="gap-item">
+                    <span class="gap-icon">⚠</span>
+                    <span>Depth of experience with some required AI frameworks unclear</span>
+                  </div>
+
+                  <div class="recommendation-box">
+                    <div class="recommendation-label">✅ Recommendation</div>
+                    <p class="recommendation-text">
+                      Proceed with interview process focusing on computer vision and specific NLP experience validation. Candidate shows strong potential with extensive AI implementation experience and modern tech stack knowledge.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Chat with Agent -->
+            <div class="card animate-in delay-4">
+              <div class="card-header">
+                <h3>💬 Ask about JD or Profile</h3>
+                <span style="font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono);">Resume Analysis Active</span>
+              </div>
+              <div class="chat-section">
+                <div class="chat-messages" id="chat-messages">
+                  <div class="chat-msg agent">
+                    <div class="chat-msg-avatar">AI</div>
+                    <div class="chat-msg-bubble">
+                      I've analyzed Ramesh Kumar's resume against the Devops Architect JD. He scores 85% overall with strong matches across all core skills. What would you like to know more about?
+                    </div>
+                  </div>
+                  <div class="chat-msg user">
+                    <div class="chat-msg-avatar">SM</div>
+                    <div class="chat-msg-bubble">
+                      Does he have experience leading teams in banking environments?
+                    </div>
+                  </div>
+                  <div class="chat-msg agent">
+                    <div class="chat-msg-avatar">AI</div>
+                    <div class="chat-msg-bubble">
+                      Based on his resume, Ramesh has led multiple technical teams in enterprise environments including Fortune 500 companies. While banking-specific experience isn't explicitly mentioned, his enterprise integration skills and process automation background align well with banking-grade requirements.
+                    </div>
+                  </div>
+                </div>
+                <div class="chat-input-row">
+                  <input type="text" class="chat-input" id="chat-input" placeholder="Ask any further questions about JD or Profile..." onkeypress="handleChatKeypress(event)">
+                  <button class="chat-send" onclick="sendChat()">→</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ====== JAVASCRIPT ====== -->
+<script>
+function showScreen(screen) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+  if (screen === 'opportunities') {
+    document.getElementById('screen-opportunities').classList.add('active');
+    document.querySelectorAll('.nav-item')[0].classList.add('active');
+    document.getElementById('breadcrumb-separator').style.display = 'none';
+    document.getElementById('breadcrumb-current').style.display = 'none';
+  } else {
+    document.getElementById('screen-analysis').classList.add('active');
+    document.querySelectorAll('.nav-item')[1].classList.add('active');
+    document.getElementById('breadcrumb-separator').style.display = 'inline';
+    document.getElementById('breadcrumb-current').style.display = 'inline';
+  }
+}
+
+function openAnalysis(title) {
+  document.getElementById('analysis-title').textContent = title;
+  document.getElementById('breadcrumb-current').textContent = title;
+  showScreen('analysis');
+}
+
+function selectCandidate(el, initials) {
+  document.querySelectorAll('.candidate-item').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('profile-avatar').textContent = initials;
+}
+
+function sendChat() {
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  const chatBox = document.getElementById('chat-messages');
+
+  // User message
+  const userDiv = document.createElement('div');
+  userDiv.className = 'chat-msg user';
+  userDiv.innerHTML = `<div class="chat-msg-avatar">SM</div><div class="chat-msg-bubble">${msg}</div>`;
+  chatBox.appendChild(userDiv);
+
+  input.value = '';
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  // Simulated agent response
+  setTimeout(() => {
+    const agentDiv = document.createElement('div');
+    agentDiv.className = 'chat-msg agent';
+    agentDiv.innerHTML = `<div class="chat-msg-avatar">AI</div><div class="chat-msg-bubble">I'm analyzing the resume and JD to answer your question. In a production environment, this response would be streamed from the Strands Agent via Claude Sonnet.</div>`;
+    chatBox.appendChild(agentDiv);
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }, 800);
+}
+
+function handleChatKeypress(e) {
+  if (e.key === 'Enter') sendChat();
+}
+
+// Filter buttons
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+</script>
+
+</body>
+</html>
