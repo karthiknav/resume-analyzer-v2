@@ -9,10 +9,12 @@ const ALLOWED_TYPES = [
 
 interface UploadResumeProps {
   opportunityId: string;
+  /** When set, file is stored under opportunities/<id>/candidates/<candidateId>/<file> */
+  candidateId?: string;
   onUploadComplete?: (key: string) => void;
 }
 
-export function UploadResume({ opportunityId, onUploadComplete }: UploadResumeProps) {
+export function UploadResume({ opportunityId, candidateId, onUploadComplete }: UploadResumeProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -42,7 +44,8 @@ export function UploadResume({ opportunityId, onUploadComplete }: UploadResumePr
       const { uploadUrl, key } = await getUploadUrl(
         opportunityId,
         file.name,
-        file.type
+        file.type,
+        candidateId
       );
       await uploadToS3(uploadUrl, file);
       setSuccess(`Uploaded: ${file.name}`);

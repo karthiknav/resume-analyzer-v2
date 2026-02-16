@@ -386,6 +386,79 @@ tbody td { padding: 16px 24px; font-size: 14px; }
 .upload-error { color: var(--accent-red); font-size: 12px; margin-top: 8px; }
 .upload-success { color: var(--accent-green); font-size: 12px; margin-top: 8px; }
 
+/* New Opportunity modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 20px;
+}
+.modal-card {
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+  max-width: 420px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 0;
+}
+.modal-header h3 { font-size: 18px; font-weight: 700; margin: 0; }
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 4px;
+}
+.modal-close:hover { color: var(--text-primary); }
+.modal-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 12px 20px 0;
+  line-height: 1.5;
+}
+.modal-card form { padding: 20px; }
+.modal-field {
+  margin-bottom: 16px;
+}
+.modal-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.modal-field input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-family: var(--font-sans);
+}
+.modal-field input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
 @media (max-width: 1200px) {
   .analysis-layout { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: repeat(2, 1fr); }

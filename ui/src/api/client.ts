@@ -35,6 +35,17 @@ export async function listOpportunities(): Promise<Opportunity[]> {
   return request<Opportunity[]>('/opportunities');
 }
 
+/** Get presigned URL to upload a new job description (new opportunity). No DynamoDB; file goes to S3 under opportunities/<filename>. */
+export async function getUploadJdUrl(
+  filename: string,
+  contentType: string
+): Promise<UploadUrlResponse> {
+  return request<UploadUrlResponse>('/opportunities/upload-jd', {
+    method: 'POST',
+    body: JSON.stringify({ filename, contentType }),
+  });
+}
+
 /** Get analysis detail for an opportunity (DynamoDB + S3). */
 export async function getAnalysis(opportunityId: string): Promise<AnalysisDetail> {
   return request<AnalysisDetail>(`/opportunities/${opportunityId}/analysis`);
@@ -44,11 +55,17 @@ export async function getAnalysis(opportunityId: string): Promise<AnalysisDetail
 export async function getUploadUrl(
   opportunityId: string,
   filename: string,
-  contentType: string
+  contentType: string,
+  candidateId?: string
 ): Promise<UploadUrlResponse> {
   return request<UploadUrlResponse>('/upload-url', {
     method: 'POST',
-    body: JSON.stringify({ opportunityId, filename, contentType }),
+    body: JSON.stringify({
+      opportunityId,
+      filename,
+      contentType,
+      ...(candidateId && { candidateId }),
+    }),
   });
 }
 

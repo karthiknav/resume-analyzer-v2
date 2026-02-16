@@ -1,25 +1,28 @@
 /**
  * Resume Analyzer API — middleware for S3 and DynamoDB.
- * Uses AWS SDK server-side; no credentials in the browser.
+ * Uses AWS SDK v3 server-side; no credentials in the browser.
  *
  * Env: BUCKET_NAME, OPPORTUNITIES_TABLE (optional), REGION (optional)
  */
 
 import express from 'express';
 import cors from 'cors';
-import pkg from 'aws-sdk';
-const { S3, DynamoDB } = pkg;
+import { S3Client, PutObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const REGION = process.env.AWS_REGION || process.env.REGION || 'us-east-1';
-const BUCKET_NAME = process.env.BUCKET_NAME || process.env.S3_BUCKET;
-const OPPORTUNITIES_TABLE = process.env.OPPORTUNITIES_TABLE || process.env.DYNAMODB_TABLE;
+const BUCKET_NAME = process.env.BUCKET_NAME || process.env.S3_BUCKET || 'amzn-s3-resume-analyzer-v2-bucket-agentcore-206409480438';
+const OPPORTUNITIES_TABLE = process.env.OPPORTUNITIES_TABLE || process.env.DYNAMODB_TABLE || 'JobAnalysis-agentcore';
 
-const s3 = new S3({ region: REGION });
-const dynamo = new DynamoDB.DocumentClient({ region: REGION });
+const s3Client = new S3Client({ region: REGION });
+const dynamoClient = new DynamoDBClient({ region: REGION });
+const dynamo = DynamoDBDocumentClient.from(dynamoClient);
 
 // ——— Mock data when DynamoDB table or env not set ———
 const MOCK_OPPORTUNITIES = [
@@ -78,13 +81,42 @@ const MOCK_ANALYSIS = {
   recommendation: 'Proceed with interview process focusing on computer vision and specific NLP experience validation. Candidate shows strong potential with extensive AI implementation experience.',
 };
 
+// ——— POST /api/opportunities/upload-jd (get presigned URL to upload a job description; no DynamoDB) ———
+// Upload goes directly under opportunities/<filename>. Your trigger can process this path.
+app.post('/api/opportunities/upload-jd', async (req, res) => {
+  if (!BUCKET_NAME) {
+    return res.status(500).json({ message: 'S3 bucket not configured (set BUCKET_NAME)' });
+  }
+  const { filename, contentType } = req.body || {};
+  if (!filename) {
+    return res.status(400).json({ message: 'filename is required' });
+  }
+  const safeName = String(filename).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const key = `opportunities/${safeName}`;
+  try {
+    const uploadUrl = await getSignedUrl(
+      s3Client,
+      new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+        ContentType: contentType || 'application/octet-stream',
+      }),
+      { expiresIn: 900 }
+    );
+    res.json({ uploadUrl, key, expiresIn: 900 });
+  } catch (err) {
+    console.error('Presign JD upload error:', err);
+    res.status(500).json({ message: err.message || 'Failed to generate upload URL' });
+  }
+});
+
 // ——— GET /api/opportunities ———
 app.get('/api/opportunities', async (req, res) => {
   try {
     if (!OPPORTUNITIES_TABLE) {
       return res.json(MOCK_OPPORTUNITIES);
     }
-    const result = await dynamo.scan({ TableName: OPPORTUNITIES_TABLE }).promise();
+    const result = await dynamo.send(new ScanCommand({ TableName: OPPORTUNITIES_TABLE }));
     const items = (result.Items || []).map((item) => ({
       id: item.id ?? item.opportunityId,
       title: item.title ?? item.name,
@@ -110,10 +142,10 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
       const mock = { ...MOCK_ANALYSIS, opportunityId: id, opportunityTitle: `Opportunity ${id}` };
       return res.json(mock);
     }
-    const result = await dynamo.get({
+    const result = await dynamo.send(new GetCommand({
       TableName: OPPORTUNITIES_TABLE,
       Key: { id },
-    }).promise();
+    }));
     if (!result.Item) {
       return res.json({ ...MOCK_ANALYSIS, opportunityId: id, opportunityTitle: `Opportunity ${id}` });
     }
@@ -135,23 +167,39 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
   }
 });
 
+// S3 folder structure (see create_s3_folders.py):
+//   opportunities/
+//   └── SO_ID/                    (opportunityId)
+//       ├── jd/                   (job description files)
+//       ├── candidates/
+//       │   └── candidate_id/     (resumes per candidate)
+//       └── analysis/
+
 // ——— POST /api/upload-url (presigned URL for S3 upload) ———
 app.post('/api/upload-url', async (req, res) => {
   if (!BUCKET_NAME) {
     return res.status(500).json({ message: 'S3 bucket not configured (set BUCKET_NAME)' });
   }
-  const { opportunityId, filename, contentType } = req.body || {};
+  const { opportunityId, candidateId, filename, contentType } = req.body || {};
   if (!opportunityId || !filename) {
     return res.status(400).json({ message: 'opportunityId and filename required' });
   }
-  const key = `opportunities/${opportunityId}/resumes/${Date.now()}-${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+  // Use candidateId if provided, else place new uploads under candidates/upload_<timestamp>/
+  const candidateFolder = candidateId && String(candidateId).trim()
+    ? String(candidateId).trim()
+    : `upload_${Date.now()}`;
+  const key = `opportunities/${opportunityId}/candidates/${candidateFolder}/${safeName}`;
   try {
-    const uploadUrl = s3.getSignedUrl('putObject', {
-      Bucket: BUCKET_NAME,
-      Key: key,
-      ContentType: contentType || 'application/octet-stream',
-      Expires: 900,
-    });
+    const uploadUrl = await getSignedUrl(
+      s3Client,
+      new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+        ContentType: contentType || 'application/octet-stream',
+      }),
+      { expiresIn: 900 }
+    );
     res.json({ uploadUrl, key, expiresIn: 900 });
   } catch (err) {
     console.error('Presign error:', err);
@@ -160,17 +208,21 @@ app.post('/api/upload-url', async (req, res) => {
 });
 
 // ——— GET /api/files?prefix=... (list S3 objects) ———
+// Use prefixes aligned to folder structure, e.g.:
+//   opportunities/<opportunityId>/jd/
+//   opportunities/<opportunityId>/candidates/
+//   opportunities/<opportunityId>/candidates/<candidateId>/
 app.get('/api/files', async (req, res) => {
   if (!BUCKET_NAME) {
     return res.status(500).json({ message: 'S3 bucket not configured (set BUCKET_NAME)' });
   }
   const prefix = req.query.prefix || '';
   try {
-    const result = await s3.listObjectsV2({
+    const result = await s3Client.send(new ListObjectsV2Command({
       Bucket: BUCKET_NAME,
       Prefix: String(prefix),
       MaxKeys: 100,
-    }).promise();
+    }));
     const list = (result.Contents || []).map((o) => ({
       key: o.Key,
       size: o.Size ?? 0,
@@ -187,6 +239,7 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Resume Analyzer API on http://localhost:${PORT}`);
   console.log('  GET  /api/opportunities');
+  console.log('  POST /api/opportunities/upload-jd (upload JD file to S3; no DynamoDB)');
   console.log('  GET  /api/opportunities/:id/analysis');
   console.log('  POST /api/upload-url');
   console.log('  GET  /api/files?prefix=...');

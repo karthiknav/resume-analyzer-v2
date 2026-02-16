@@ -174,7 +174,7 @@ export function Analysis({
             </div>
           </div>
 
-          <UploadResume opportunityId={opportunityId} />
+          <UploadResume opportunityId={opportunityId} candidateId={selected?.id} />
         </div>
 
         <div className="right-panel">

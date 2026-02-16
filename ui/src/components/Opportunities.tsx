@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
-import { listOpportunities } from '../api/client';
+import { useRef, useEffect, useState } from 'react';
+import { listOpportunities, getUploadJdUrl, uploadToS3 } from '../api/client';
 import type { Opportunity as OppType } from '../api/types';
+
+const JD_ACCEPT = '.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const MAX_JD_SIZE_MB = 10;
 
 const STATUS_BADGE: Record<string, string> = {
   new: 'badge-new',
@@ -27,10 +30,19 @@ interface OpportunitiesProps {
 }
 
 export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [opportunities, setOpportunities] = useState<OppType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('all');
+  const [uploadingJd, setUploadingJd] = useState(false);
+  const [jdMessage, setJdMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const refreshList = () => {
+    listOpportunities()
+      .then(setOpportunities)
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +60,39 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
       });
     return () => { cancelled = true; };
   }, []);
+
+  const handleNewOpportunityClick = () => {
+    setJdMessage(null);
+    fileInputRef.current?.click();
+  };
+
+  const handleJdFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > MAX_JD_SIZE_MB * 1024 * 1024) {
+      setJdMessage({ type: 'error', text: `File must be under ${MAX_JD_SIZE_MB}MB` });
+      return;
+    }
+    setUploadingJd(true);
+    setJdMessage(null);
+    try {
+      const { uploadUrl, key } = await getUploadJdUrl(file.name, file.type);
+      await uploadToS3(uploadUrl, file);
+      setJdMessage({
+        type: 'success',
+        text: `Job description uploaded to S3 (${key}). Your trigger will process it.`,
+      });
+      refreshList();
+    } catch (e) {
+      setJdMessage({
+        type: 'error',
+        text: e instanceof Error ? e.message : 'Upload failed',
+      });
+    } finally {
+      setUploadingJd(false);
+    }
+  };
 
   const filtered =
     filter === 'all'
@@ -75,10 +120,36 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
             Manage client opportunities and candidate matching
           </p>
         </div>
-        <button type="button" className="btn btn-primary">
-          + New Opportunity
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={JD_ACCEPT}
+          onChange={handleJdFileChange}
+          style={{ display: 'none' }}
+        />
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={handleNewOpportunityClick}
+          disabled={uploadingJd}
+        >
+          {uploadingJd ? 'Uploading…' : '+ New Opportunity'}
         </button>
       </div>
+
+      {jdMessage && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: 12,
+            borderRadius: 8,
+            background: jdMessage.type === 'success' ? '#ECFDF5' : '#FEE2E2',
+            color: jdMessage.type === 'success' ? '#059669' : '#DC2626',
+          }}
+        >
+          {jdMessage.text}
+        </div>
+      )}
 
       {error && (
         <div style={{ marginBottom: 16, padding: 12, background: '#FEE2E2', borderRadius: 8, color: '#DC2626' }}>
