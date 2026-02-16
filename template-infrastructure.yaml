@@ -1,0 +1,164 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Resume Analyzer Agents - Strands AgentCore Implementation - Infrastructure Resources'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'agentcore'
+    Description: Environment name for resource naming
+
+Resources:
+  # IAM Role for AgentCore
+  AgentCoreExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'ResumeAnalyzerAgentCoreRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AgentCorePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: VisualEditor0
+                Effect: Allow
+                Action: bedrock-agentcore:GetResourceApiKey
+                Resource:
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:token-vault/default'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/agent-*'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:token-vault/default/apikeycredentialprovider/*'
+              - Sid: VisualEditor1
+                Effect: Allow
+                Action: bedrock-agentcore:GetResourceOauth2Token
+                Resource:
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:token-vault/default/oauth2credentialprovider/*'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:token-vault/default'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/agent-*'
+              - Sid: VisualEditor2
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:GetWorkloadAccessToken
+                  - bedrock-agentcore:GetWorkloadAccessTokenForUserId
+                  - bedrock-agentcore:GetWorkloadAccessTokenForJWT
+                Resource:
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/agent-*'
+              - Sid: VisualEditor3
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:DeleteCodeInterpreter
+                  - bedrock-agentcore:GetCodeInterpreterSession
+                  - bedrock-agentcore:StopCodeInterpreterSession
+                  - bedrock-agentcore:GetCodeInterpreter
+                  - bedrock-agentcore:ListCodeInterpreterSessions
+                  - bedrock-agentcore:StartCodeInterpreterSession
+                  - bedrock-agentcore:InvokeCodeInterpreter
+                Resource:
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:code-interpreter-custom/*'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:aws:code-interpreter/*'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:code-interpreter/*'
+              - Sid: VisualEditor4
+                Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: bedrock-agentcore
+              - Sid: VisualEditor5
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:InvokeAgentRuntime
+                  - secretsmanager:GetSecretValue
+                  - logs:DescribeLogStreams
+                  - ecr:GetDownloadUrlForLayer
+                  - bedrock:InvokeModel
+                  - ecr:BatchGetImage
+                  - bedrock:InvokeModelWithResponseStream
+                  - logs:CreateLogGroup
+                Resource:
+                  - !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:bedrock-agentcore-identity!default/oauth2/*'
+                  - 'arn:aws:bedrock:*::foundation-model/*'
+                  - 'arn:aws:bedrock:*:*:inference-profile/*'
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:*'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*'
+              - Sid: VisualEditor6
+                Effect: Allow
+                Action:
+                  - xray:PutTelemetryRecords
+                  - s3:*
+                  - bedrock-agentcore:CreateMemory
+                  - xray:GetSamplingRules
+                  - ecr:GetAuthorizationToken
+                  - ecr:InitiateLayerUpload 
+                  - xray:GetSamplingTargets
+                  - xray:PutTraceSegments
+                Resource: '*'
+              - Sid: VisualEditor7
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:GetEvent
+                  - bedrock-agentcore:CreateEvent
+                  - bedrock-agentcore:DeleteEvent
+                  - bedrock-agentcore:ListEvents
+                  - logs:PutLogEvents
+                  - bedrock-agentcore:ListMemoryRecords
+                  - bedrock-agentcore:GetMemoryRecord
+                  - logs:CreateLogStream
+                  - bedrock-agentcore:GetMemory
+                  - bedrock-agentcore:RetrieveMemoryRecords
+                  - bedrock-agentcore:ListActors
+                  - bedrock-agentcore:ListSessions
+                  - bedrock-agentcore:ListMemories
+                  - bedrock-agentcore:DeleteMemoryRecord
+                Resource:
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:memory/*'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*'
+              - Sid: VisualEditor8
+                Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*'
+              - Sid: VisualEditor9
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:ListCodeInterpreters
+                  - bedrock-agentcore:CreateCodeInterpreter
+                Resource:
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:code-interpreter-custom/*'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:aws:code-interpreter/*'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:code-interpreter/*'
+
+  # S3 Bucket for documents
+  DocumentsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'amzn-s3-resume-analyzer-bucket-${Environment}-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+Outputs:
+  DocumentsBucket:
+    Description: 'S3 bucket for documents'
+    Value: !Ref DocumentsBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-DocumentsBucket'
+
+  AgentCoreExecutionRoleArn:
+    Description: 'IAM Role ARN for AgentCore execution'
+    Value: !GetAtt AgentCoreExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-AgentCoreExecutionRoleArn'

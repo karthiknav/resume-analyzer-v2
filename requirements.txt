@@ -1,0 +1,10 @@
+bedrock-agentcore
+pydantic
+PyPDF2
+python-docx
+strands-agents
+boto3
+pathlib
+streamlit
+watchdog
+bedrock_agentcore_starter_toolkit
