@@ -4,7 +4,7 @@
 set -e
 
 ENVIRONMENT="agentcore"
-STACK_NAME="resume-analyzer-agents-strands-v2-${ENVIRONMENT}"
+STACK_NAME="resume-analyzer-agents-strands-${ENVIRONMENT}"
 REGION=${AWS_DEFAULT_REGION:-us-east-1}
 
 echo "🚀 Deploying Resume Analyzer Agents - Strands AgentCore Implementation"

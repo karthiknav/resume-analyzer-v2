@@ -14,8 +14,7 @@ def create_folder_structure(bucket_name):
         'opportunities/SAMPLE_SO_1234/',
         'opportunities/SAMPLE_SO_1234/jd/',
         'opportunities/SAMPLE_SO_1234/candidates/',
-        'opportunities/SAMPLE_SO_1234/candidates/SAMPLE_CANDIDATE_001/',
-        'opportunities/SAMPLE_SO_1234/analysis/'
+        'opportunities/SAMPLE_SO_1234/candidates/SAMPLE_CANDIDATE_001/'
     ]
     
     print(f"📁 Creating folder structure in bucket: {bucket_name}")
