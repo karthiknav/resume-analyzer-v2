@@ -27,6 +27,7 @@ env/
 
 # Bedrock Agent Core
 .bedrock_agentcore/
+.agent_arn
 
 # Docker
 *.log

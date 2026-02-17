@@ -4,7 +4,7 @@ agents:
     name: resume_analyzer_agent
     language: python
     node_version: null
-    entrypoint: C:/Users/Administrator/Documents/GitHub/resume-analyzer-v2/resume_analyzer_agent.py
+    entrypoint: C:/Users/Administrator/Documents/GitHub/v2/resume-analyzer-agent-v2/resume_analyzer_agent.py
     deployment_type: container
     runtime_type: null
     platform: linux/arm64

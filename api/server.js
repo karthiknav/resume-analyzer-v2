@@ -15,7 +15,13 @@ import { DynamoDBDocumentClient, ScanCommand, GetCommand, QueryCommand } from '@
 import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand } from '@aws-sdk/client-bedrock-agentcore';
 
 const app = express();
-app.use(cors());
+// CORS for cross-origin UI (localhost, different domain)
+app.use(cors({
+  origin: '*',
+  credentials: false,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date', 'X-Api-Key', 'X-Amz-Security-Token'],
+}));
 app.use(express.json());
 // API Gateway adds stage (e.g. /prod) to path; strip it so routes like /api/... match
 app.use((req, res, next) => {

@@ -1,6 +1,6 @@
 
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Resume Analyzer - Base Infrastructure (bucket, DynamoDB, trigger Lambda). Deploy AFTER roles stack, then run deploy_api_lambda.py, then deploy template-infrastructure-api.yaml'
+Description: 'Resume Analyzer - Storage + Base (S3, DynamoDB, Trigger Lambda). Deploy with AgentArn=PLACEHOLDER first, then redeploy with AgentArn after deploy_agent.'
 
 Parameters:
   Environment:
@@ -10,7 +10,7 @@ Parameters:
 
   AgentArn:
     Type: String
-    Description: Bedrock AgentCore Runtime ARN (will be updated after deployment)
+    Description: Bedrock AgentCore Runtime ARN (use PLACEHOLDER on first deploy, then real ARN after deploy_agent)
     Default: 'PLACEHOLDER'
 
   LambdaExecutionRoleArn:
@@ -89,12 +89,23 @@ Resources:
       Principal: s3.amazonaws.com
       SourceArn: !Sub 'arn:aws:s3:::amzn-s3-resume-analyzer-v2-bucket-${Environment}-${AWS::AccountId}'
 
-  # S3 Bucket for documents (must exist before deploy_api_lambda.py uploads zip)
+  # S3 Bucket with notification (bucket and Lambda in same stack = native NotificationConfiguration)
   DocumentsBucket:
     Type: AWS::S3::Bucket
     DependsOn: LambdaInvokePermission
     Properties:
       BucketName: !Sub 'amzn-s3-resume-analyzer-v2-bucket-${Environment}-${AWS::AccountId}'
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - HEAD
+            AllowedHeaders:
+              - '*'
       VersioningConfiguration:
         Status: Enabled
       PublicAccessBlockConfiguration:
@@ -114,7 +125,7 @@ Resources:
 
 Outputs:
   DocumentsBucket:
-    Description: 'S3 bucket for documents (used by deploy_api_lambda.py)'
+    Description: 'S3 bucket for documents (used by deploy_agent and API Lambda)'
     Value: !Ref DocumentsBucket
     Export:
       Name: !Sub '${AWS::StackName}-DocumentsBucket'

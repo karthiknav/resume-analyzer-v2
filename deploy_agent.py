@@ -18,16 +18,17 @@ def get_stack_output(stack_name: str, output_key: str, region: str) -> str:
 def main():
     environment = os.getenv('ENVIRONMENT', 'agentcore')
     region = os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
-    stack_name = f"resume-analyzer-agents-strands-{environment}"
+    base_name = f"resume-analyzer-agents-strands-{environment}"
+    roles_stack = f"{base_name}-roles"
+    storage_stack = f"{base_name}-storage"
     
     print(f"🤖 Deploying Resume Analyzer Agent to Bedrock AgentCore Runtime")
     print(f"Region: {region}")
-    print(f"Stack: {stack_name}")
     
-    # Get infrastructure outputs
+    # Get infrastructure outputs from roles and storage stacks
     print("📋 Getting infrastructure outputs...")
-    execution_role = get_stack_output(stack_name, 'AgentCoreExecutionRoleArn', region)
-    documents_bucket = get_stack_output(stack_name, 'DocumentsBucket', region)
+    execution_role = get_stack_output(roles_stack, 'AgentCoreExecutionRoleArn', region)
+    documents_bucket = get_stack_output(storage_stack, 'DocumentsBucket', region)
     
     print(f"  Execution Role: {execution_role}")
     print(f"  Documents Bucket: {documents_bucket}")
@@ -60,21 +61,10 @@ def main():
     print(f"📊 Final status: {status}")
     print(f"🎉 Agent deployed successfully!")
     print(f"\n📋 Agent ARN: {agent_arn}")
-    
-    # Update Lambda with Agent ARN
-    print("\n🔄 Updating Lambda function with Agent ARN...")
-    cf = boto3.client('cloudformation', region_name=region)
-    lambda_client = boto3.client('lambda', region_name=region)
-    
-    lambda_function_name = f"ResumeAnalyzerTrigger-{environment}"
-    try:
-        lambda_client.update_function_configuration(
-            FunctionName=lambda_function_name,
-            Environment={'Variables': {'AGENT_ARN': agent_arn}}
-        )
-        print(f"✅ Lambda updated with Agent ARN")
-    except Exception as e:
-        print(f"⚠️  Warning: Could not update Lambda: {e}")
+
+    # Write ARN for deploy.sh to use
+    with open('.agent_arn', 'w') as f:
+        f.write(agent_arn)
 
 if __name__ == "__main__":
     main()
