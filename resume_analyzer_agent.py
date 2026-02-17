@@ -188,7 +188,7 @@ async def process_query_with_strands_agents(query: str):
         logger.error(f"❌ Error in query processing: {str(e)}")
         raise
 
-@app.entrypoint
+#@app.entrypoint
 async def invoke(payload):
     """AgentCore entrypoint for HR resume evaluation"""
     try:
@@ -231,14 +231,6 @@ async def invoke(payload):
             async for event in agent_stream:
                 event_count += 1
                 logger.debug(f"📊 Processing event #{event_count}: {type(event)}")
-
-                if (
-                    "current_tool_use" in event
-                    and event["current_tool_use"].get("name") != tool_name
-                ):
-                    tool_name = event["current_tool_use"]["name"]
-                    logger.info(f"🔧 Agent using tool: {tool_name}")
-                    yield f"\n\n🔧 Using tool: {tool_name}\n\n"
 
                 if "data" in event:
                     tool_name = None
@@ -584,7 +576,7 @@ Rules:
 - recommendation: single string, one or two paragraphs.
 - All scores (overallScore, coreScore, domainScore, softScore) must be numbers 0-100. Convert from 1-5 scale if needed: 5->90-100, 4->75-89, 3->60-74, 2->40-59, 1->0-39.
 
-Output ONLY the JSON object inside a ```json ... ``` block."""
+Output ONLY the JSON object inside a ```json ... ``` block.""")
     
     return supervisor_agent
 
@@ -731,6 +723,6 @@ if __name__ == "__main__":
         print(f"Document processing result: {response1[:200]}...")
     
     asyncio.run(test())
-    app.run()
+    # app.run()
 
 
