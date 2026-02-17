@@ -248,7 +248,7 @@ async def invoke(payload):
                     analysis_json = parse_json_from_text(full_text)
                     resume_folder = "/".join(resume_key.split("/")[:-1])
                     resume_stem = Path(resume_key).stem
-                    analysis_s3_key = f"{resume_folder}/{resume_stem}.json"
+                    analysis_s3_key = f"{resume_folder}/analysis.json"
                     upload_analysis_to_s3(bucket, analysis_s3_key, analysis_json)
                     status_msg = json.dumps({"status": "success", "message": "Resume analysis saved to S3", "s3_key": analysis_s3_key})
                     yield f"\n\n{status_msg}"
