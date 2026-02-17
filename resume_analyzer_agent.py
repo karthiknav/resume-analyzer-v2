@@ -198,6 +198,7 @@ async def invoke(payload):
         bucket = payload.get('bucket')
         resume_key = payload.get('resume_key')
         job_description_key = payload.get('job_description_key')
+        job_analysis_key = payload.get('job_analysis_key')
         
         # Check if this is a plain text query
         if 'query' in payload or 'message' in payload:
@@ -216,11 +217,16 @@ async def invoke(payload):
             
             logger.info("🔄 Starting resume processing with Strands agents")
             get_or_create_session(resume_key, job_description_key)
-            agent_stream = await process_resume_with_strands_agents(bucket, resume_key, job_description_key)
+            agent_stream = await process_resume_with_strands_agents(
+                bucket, resume_key,
+                job_description_key=job_description_key,
+                job_analysis_key=job_analysis_key,
+            )
         
         tool_name = None
         event_count = 0
-        
+        collected_data = []  # for resume flow: collect full response to parse and upload JSON
+
         try:
             async for event in agent_stream:
                 event_count += 1
@@ -236,9 +242,39 @@ async def invoke(payload):
 
                 if "data" in event:
                     tool_name = None
-                    data_length = len(str(event["data"]))
+                    chunk = event["data"]
+                    data_length = len(str(chunk))
                     logger.debug(f"📤 Yielding data chunk of {data_length} characters")
-                    yield event["data"]
+                    if resume_key and bucket:
+                        collected_data.append(chunk)
+                    yield chunk
+
+            # Resume flow: parse final JSON and upload to S3 (same folder structure as process_jd_only)
+            if resume_key and bucket and collected_data:
+                full_text = "".join(str(c) for c in collected_data)
+                try:
+                    if "```json" in full_text:
+                        json_text = full_text.split("```json")[1].split("```")[0].strip()
+                    elif "```" in full_text:
+                        json_text = full_text.split("```")[1].split("```")[0].strip()
+                    else:
+                        json_text = full_text.strip()
+                    analysis_json = json.loads(json_text)
+                    analysis_body = json.dumps(analysis_json, ensure_ascii=False, indent=2)
+                    resume_folder = "/".join(resume_key.split("/")[:-1])
+                    resume_stem = Path(resume_key).stem
+                    analysis_s3_key = f"{resume_folder}/{resume_stem}.json"
+                    logger.info(f"💾 Saving resume analysis to s3://{bucket}/{analysis_s3_key}")
+                    s3_client.put_object(
+                        Bucket=bucket,
+                        Key=analysis_s3_key,
+                        Body=analysis_body,
+                        ContentType="application/json",
+                    )
+                    logger.info("✅ Resume analysis JSON saved successfully")
+                    yield f"\n\n{json.dumps({'status': 'success', 'message': 'Resume analysis saved to S3', 's3_key': analysis_s3_key})}"
+                except Exception as up:
+                    logger.warning(f"⚠️ Could not parse or upload resume analysis JSON: {up}")
                     
         except Exception as e:
             logger.error(f"❌ Error in agent stream processing: {str(e)}")
@@ -322,44 +358,57 @@ Return ONLY a valid JSON object with these fields."""
         logger.error(f"❌ Error in JD processing: {str(e)}")
         raise
 
-async def process_resume_with_strands_agents(bucket: str, resume_key: str, job_description_key: str) -> Dict[str, Any]:
-    """Process resume using Strands multi-agent collaboration"""
+async def process_resume_with_strands_agents(
+    bucket: str,
+    resume_key: str,
+    job_description_key: str = None,
+    job_analysis_key: str = None,
+) -> Dict[str, Any]:
+    """Process resume using Strands multi-agent collaboration.
+    Job is always analyzed first; we download the job analysis JSON from job_analysis_key
+    (or fall back to raw job description from job_description_key) and use it for evaluation.
+    """
     try:
         logger.info(f"📥 Downloading resume from s3://{bucket}/{resume_key}")
-        # Download resume content from S3
         resume_content = download_s3_file(bucket, resume_key)
         logger.info(f"✅ Resume downloaded, length: {len(resume_content)} characters")
         
-        # Download job description content from S3
-        if job_description_key:
+        job_content = None
+        if job_analysis_key:
+            logger.info(f"📥 Downloading job analysis from s3://{bucket}/{job_analysis_key}")
+            try:
+                job_analysis_raw = download_s3_file(bucket, job_analysis_key)
+                job_analysis_data = json.loads(job_analysis_raw)
+                job_content = json.dumps(job_analysis_data, indent=2, ensure_ascii=False)
+                logger.info("✅ Job analysis JSON loaded")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to load job_analysis_key, falling back to job description: {e}")
+        if job_content is None and job_description_key:
             logger.info(f"📥 Downloading job description from s3://{bucket}/{job_description_key}")
             job_content = download_s3_file(bucket, job_description_key)
             logger.info(f"✅ Job description downloaded, length: {len(job_content)} characters")
-        else:
-            logger.info("ℹ️ No job description provided, using default")
+        if job_content is None:
+            logger.info("ℹ️ No job description or analysis provided, using default")
             job_content = "No specific job description provided."
         
         logger.info("🤖 Creating HR Supervisor agent")
-        # Create the HR Supervisor agent
         supervisor_agent = create_supervisor_agent()
         logger.info("✅ HR Supervisor agent created successfully")
         
-        # Create evaluation request
         evaluation_request = f"""
         Please evaluate this candidate for the position using your specialized agent team.
         
         RESUME:
         {resume_content}
         
-        JOB DESCRIPTION:
+        JOB REQUIREMENTS (already analyzed; use this directly):
         {job_content}
 
         Work with your team to:
         1. ResumeParserAgent: extract structured information (name, experience, skills)
-        2. JobAnalyzerAgent: analyze job requirements
-        3. ResumeEvaluatorAgent: evaluate candidate fit
-        4. GapIdentifierAgent: identify missing qualifications
-        5. CandidateRaterAgent: provide numerical rating (use 0-100 scale for scores)
+        2. ResumeEvaluatorAgent: evaluate candidate fit
+        3. GapIdentifierAgent: identify missing qualifications
+        4. CandidateRaterAgent: provide numerical rating (use 0-100 scale for scores)
 
         Your final response MUST be a single JSON object in a ```json ... ``` block, matching the exact structure defined in your system prompt (candidate, coreSkills, domainSkills, evidenceSnippets, gaps, recommendation). No other text or markdown outside the JSON block.
         """
@@ -377,7 +426,9 @@ async def process_resume_with_strands_agents(bucket: str, resume_key: str, job_d
         raise
 
 def create_supervisor_agent():
-    """Create the HR Supervisor agent with specialized tools"""
+    """Create the HR Supervisor agent with specialized tools.
+    Job analysis is always provided in the request; the analyze_job_requirements tool is not used.
+    """
     session = get_or_create_session()
     memory_hook_provider = MemoryHookProvider(session)
     
@@ -399,26 +450,6 @@ Structure your response as a JSON object with these categories."""
         )
         
         result = parser_agent(resume_text)
-        return safe_extract_content(result)
-    
-    @tool
-    def analyze_job_requirements(job_description: str) -> str:
-        """Analyze job requirements"""
-        analyzer_agent = Agent(
-            model=MODEL_ID,
-            system_prompt="""You are a Job Analyzer Agent specializing in extracting job requirements.
-
-Analyze and extract:
-1. Required Qualifications (education, experience, skills, certifications)
-2. Preferred Qualifications (additional beneficial skills)
-3. Skills (technical, domain, soft skills, languages, proficiency, priority)
-4. Company Culture (environment, values, work style)
-5. Compensation and Benefits (if provided)
-
-Structure your response as a JSON object with these categories."""
-        )
-        
-        result = analyzer_agent(job_description)
         return safe_extract_content(result)
     
     @tool
@@ -483,26 +514,24 @@ Structure your response as a JSON object with numerical rating and analysis."""
         return safe_extract_content(result)
 
 
-    # Create the main HR Supervisor Agent
+    # Create the main HR Supervisor Agent (job analysis is always provided in the request)
     supervisor_agent = Agent(
         model=MODEL_ID,
         hooks= [memory_hook_provider],
         tools=[
             extract_resume_info,
-            analyze_job_requirements, 
             evaluate_candidate_fit,
             identify_gaps,
-            rate_candidate
+            rate_candidate,
         ],
         system_prompt="""You are the Supervisor Agent for HR resume evaluation running on Amazon Bedrock AgentCore Runtime.
 
 Coordinate with your specialized team to provide comprehensive candidate evaluations:
 
 1. Have ResumeParserAgent extract structured information from the resume (name, experience, skills)
-2. Have JobAnalyzerAgent analyze the job requirements
-3. Have ResumeEvaluatorAgent evaluate candidate fit
-4. Have GapIdentifierAgent identify missing qualifications
-5. Have CandidateRaterAgent provide numerical rating (convert 1-5 scale to 0-100 for overallScore, coreScore, domainScore, softScore)
+2. Have ResumeEvaluatorAgent evaluate candidate fit (use the JOB REQUIREMENTS already provided in the request)
+3. Have GapIdentifierAgent identify missing qualifications
+4. Have CandidateRaterAgent provide numerical rating (convert 1-5 scale to 0-100 for overallScore, coreScore, domainScore, softScore)
 
 CRITICAL: Your final output MUST be a single valid JSON object only (no markdown, no extra text). Wrap it in a ```json code block. The JSON must match this exact structure so the UI can map all fields correctly. There is always exactly one candidate per analysis.
 
@@ -687,6 +716,21 @@ if __name__ == "__main__":
     #     print(f"Document processing result: {response1[:200]}...")
     
     # asyncio.run(test())
+    async def test():
+        # First call with document payload to create session
+        document_payload = {
+            "bucket": "amzn-s3-resume-analyzer-v2-bucket-agentcore-206409480438",
+            "resume_key": "opportunities/SO_000005/candidates/sample_resume_arjun_mehta.pdf",
+            "job_analysis_key": "opportunities/SO_000005/jd/jd.json"
+        }
+        
+        print("=== First call: Processing documents ===")
+        response1 = ""
+        async for chunk in invoke(document_payload):
+            response1 += str(chunk)
+        print(f"Document processing result: {response1[:200]}...")
+    
+    asyncio.run(test())
     app.run()
 
 
