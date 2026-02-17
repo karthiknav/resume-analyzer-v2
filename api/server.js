@@ -7,10 +7,12 @@
 
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand, GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand } from '@aws-sdk/client-bedrock-agentcore';
 
 const app = express();
 app.use(cors());
@@ -20,10 +22,12 @@ const REGION = process.env.AWS_REGION || process.env.REGION || 'us-east-1';
 const BUCKET_NAME = process.env.BUCKET_NAME || process.env.S3_BUCKET || 'amzn-s3-resume-analyzer-v2-bucket-agentcore-206409480438';
 const OPPORTUNITIES_TABLE = process.env.OPPORTUNITIES_TABLE || process.env.DYNAMODB_TABLE || 'JobAnalysis-agentcore';
 const CANDIDATE_TABLE = process.env.CANDIDATE_TABLE || 'CandidateAnalysis-agentcore';
+const AGENT_ARN = process.env.AGENT_ARN || 'arn:aws:bedrock-agentcore:us-east-1:206409480438:runtime/resume_analyzer_agent-j2SNsc9Nf9';
 
 const s3Client = new S3Client({ region: REGION });
 const dynamoClient = new DynamoDBClient({ region: REGION });
 const dynamo = DynamoDBDocumentClient.from(dynamoClient);
+const agentcoreClient = new BedrockAgentCoreClient({ region: REGION });
 
 // ——— Mock data when DynamoDB table or env not set ———
 const MOCK_OPPORTUNITIES = [
@@ -116,10 +120,16 @@ app.post('/api/opportunities/upload-jd', async (req, res) => {
 app.get('/api/opportunities', async (req, res) => {
   try {
     if (!OPPORTUNITIES_TABLE) {
+      console.log('[opportunities] Using mock data (OPPORTUNITIES_TABLE not set)');
       return res.json(MOCK_OPPORTUNITIES);
     }
     const result = await dynamo.send(new ScanCommand({ TableName: OPPORTUNITIES_TABLE }));
-    const items = (result.Items || []).map((item) => {
+    const rawItems = result.Items || [];
+    console.log(`[opportunities] Fetched ${rawItems.length} item(s) from ${OPPORTUNITIES_TABLE}`);
+    if (rawItems.length === 0) {
+      console.log('[opportunities] Table empty — returning MOCK_OPPORTUNITIES fallback');
+    }
+    const items = rawItems.map((item) => {
       const rawStatus = (item.status ?? 'new').toString();
       const status = rawStatus.toLowerCase();
       const keywords = item.keywords;
@@ -142,9 +152,12 @@ app.get('/api/opportunities', async (req, res) => {
         created: createdStr,
       };
     });
-    res.json(items.length ? items : MOCK_OPPORTUNITIES);
+    const response = items.length ? items : MOCK_OPPORTUNITIES;
+    if (!items.length) console.log('[opportunities] Returning MOCK_OPPORTUNITIES due to empty items');
+    res.json(response);
   } catch (err) {
-    console.error('DynamoDB scan error:', err);
+    console.error('[opportunities] DynamoDB scan error:', err);
+    console.log('[opportunities] Falling back to MOCK_OPPORTUNITIES');
     res.json(MOCK_OPPORTUNITIES);
   }
 });
@@ -163,6 +176,7 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
   console.log('[analysis] opportunity id:', id);
   try {
     if (!OPPORTUNITIES_TABLE) {
+      console.log('[analysis] Using mock data (OPPORTUNITIES_TABLE not set)');
       const mock = { ...MOCK_ANALYSIS, opportunityId: id, opportunityTitle: `Opportunity ${id}` };
       return res.json(mock);
     }
@@ -173,6 +187,11 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
       Key: { jobDescriptionId: id },
     }));
     const jobItem = jobResult.Item;
+    if (jobItem) {
+      console.log(`[analysis] Fetched job from ${OPPORTUNITIES_TABLE} for jobDescriptionId=${id}`);
+    } else {
+      console.log(`[analysis] No job found in ${OPPORTUNITIES_TABLE} for jobDescriptionId=${id}`);
+    }
     const keywordsRaw = jobItem?.keywords;
     const jdTags = Array.isArray(keywordsRaw)
       ? keywordsRaw.map((k) => (typeof k === 'string' ? { label: k } : { label: k?.label ?? String(k), years: k?.years }))
@@ -271,7 +290,68 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
     res.json(payload);
   } catch (err) {
     console.error('[analysis] Error:', err);
+    console.log(`[analysis] Falling back to MOCK_ANALYSIS for jobDescriptionId=${id}`);
     res.json({ ...MOCK_ANALYSIS, opportunityId: id, opportunityTitle: `Opportunity ${id}` });
+  }
+});
+
+// ——— POST /api/chat (invoke agent with query for selected candidate) ———
+app.post('/api/chat', async (req, res) => {
+  const { jobDescriptionId, candidateId, query } = req.body || {};
+  if (!jobDescriptionId || !candidateId || !query || typeof query !== 'string') {
+    return res.status(400).json({ message: 'jobDescriptionId, candidateId, and query are required' });
+  }
+  try {
+    const runtimeSessionId = crypto.createHash('md5').update(`${jobDescriptionId}_${candidateId}`).digest('hex').slice(0, 16);
+    const payload = JSON.stringify({
+      query: String(query).trim(),
+      job_description_id: jobDescriptionId,
+      candidate_id: candidateId,
+    });
+    const command = new InvokeAgentRuntimeCommand({
+      agentRuntimeArn: AGENT_ARN,
+      qualifier: 'DEFAULT',
+      runtimeSessionId,
+      payload: new TextEncoder().encode(payload),
+    });
+    const response = await agentcoreClient.send(command);
+    if (!response.response) {
+      return res.status(502).json({ message: 'Agent returned empty response' });
+    }
+    const text = await response.response.transformToString();
+    // If content-type is event-stream, parse and extract text; otherwise return as-is
+    if (response.contentType?.includes('text/event-stream')) {
+      const lines = text.split('\n').filter((l) => l.startsWith('data: '));
+      const parts = [];
+      for (const line of lines) {
+        const data = line.slice(6).trim();
+        if (data && data !== '[DONE]') {
+          try {
+            const parsed = JSON.parse(data);
+            const content =
+              parsed?.result?.message?.content?.[0]?.text ??
+              parsed?.content?.[0]?.text ??
+              parsed?.content ??
+              parsed?.text;
+            if (content) parts.push(typeof content === 'string' ? content : JSON.stringify(content));
+          } catch {
+            if (data && data.startsWith('{')) parts.push(data);
+            else if (data) parts.push(data);
+          }
+        }
+      }
+      return res.json({ reply: parts.join('').trim() || text });
+    }
+    try {
+      const parsed = JSON.parse(text);
+      const reply = parsed?.result?.message?.content?.[0]?.text ?? parsed?.content ?? parsed?.message ?? parsed?.reply ?? text;
+      return res.json({ reply: typeof reply === 'string' ? reply : JSON.stringify(reply) });
+    } catch {
+      return res.json({ reply: text });
+    }
+  } catch (err) {
+    console.error('[chat] InvokeAgentRuntime error:', err);
+    res.status(500).json({ message: err.message || 'Failed to invoke agent' });
   }
 });
 
@@ -346,6 +426,7 @@ app.listen(PORT, () => {
   console.log('  GET  /api/opportunities');
   console.log('  POST /api/opportunities/upload-jd (upload JD file to S3; no DynamoDB)');
   console.log('  GET  /api/opportunities/:id/analysis');
+  console.log('  POST /api/chat (invoke agent with jobDescriptionId, candidateId, query)');
   console.log('  POST /api/upload-url');
   console.log('  GET  /api/files?prefix=...');
   if (!BUCKET_NAME) console.log('  (S3: set BUCKET_NAME for upload/list)');

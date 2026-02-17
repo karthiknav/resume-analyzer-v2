@@ -6,6 +6,7 @@ import time
 import hashlib
 from typing import Dict, Any
 import boto3
+from botocore.exceptions import ClientError
 from bedrock_agentcore import BedrockAgentCoreApp
 from strands import Agent, tool
 import PyPDF2
@@ -163,7 +164,14 @@ def get_or_create_session(
         return None
 
     actor = Actor(actor_id=ACTOR_ID, session_manager=session_manager)
-    existing = actor.list_sessions()
+    try:
+        existing = actor.list_sessions()
+    except ClientError as e:
+        if e.response.get('Error', {}).get('Code') == 'ResourceNotFoundException':
+            logger.info(f"Actor {ACTOR_ID} not found — no sessions yet, will create new one")
+            existing = []
+        else:
+            raise
     def _sid(s):
         if isinstance(s, dict):
             return s.get("sessionId") or s.get("session_id")

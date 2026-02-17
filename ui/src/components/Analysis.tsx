@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getAnalysis } from '../api/client';
+import { getAnalysis, sendChat } from '../api/client';
 import type { AnalysisDetail as AnalysisDetailType, Candidate } from '../api/types';
 import { UploadResume } from './UploadResume';
 
@@ -33,6 +33,7 @@ export function Analysis({
     },
   ]);
   const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,20 +56,26 @@ export function Analysis({
     return () => { cancelled = true; };
   }, [opportunityId]);
 
-  const sendChat = () => {
+  const handleSendChat = async () => {
     const msg = chatInput.trim();
     if (!msg) return;
+    const candidateId = (selected ?? data?.candidates?.[0])?.id;
+    if (!candidateId) {
+      setChatMessages((prev) => [...prev, { role: 'user', text: msg }, { role: 'agent', text: 'Please select a candidate to ask questions about.' }]);
+      setChatInput('');
+      return;
+    }
     setChatMessages((prev) => [...prev, { role: 'user', text: msg }]);
     setChatInput('');
-    setTimeout(() => {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          role: 'agent',
-          text: 'In production this would stream from your Strands Agent. For now, use the API to connect to Bedrock.',
-        },
-      ]);
-    }, 600);
+    setChatLoading(true);
+    try {
+      const { reply } = await sendChat(opportunityId, candidateId, msg);
+      setChatMessages((prev) => [...prev, { role: 'agent', text: reply || 'No response.' }]);
+    } catch (e) {
+      setChatMessages((prev) => [...prev, { role: 'agent', text: `Error: ${e instanceof Error ? e.message : 'Failed to get response'}` }]);
+    } finally {
+      setChatLoading(false);
+    }
   };
 
   if (loading) {
@@ -370,6 +377,12 @@ export function Analysis({
                     <div className="chat-msg-bubble">{m.text}</div>
                   </div>
                 ))}
+                {chatLoading && (
+                  <div className="chat-msg agent">
+                    <div className="chat-msg-avatar">AI</div>
+                    <div className="chat-msg-bubble" style={{ opacity: 0.7 }}>Thinking…</div>
+                  </div>
+                )}
               </div>
               <div className="chat-input-row">
                 <input
@@ -378,9 +391,10 @@ export function Analysis({
                   placeholder="Ask any further questions about JD or Profile..."
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+                  onKeyDown={(e) => e.key === 'Enter' && !chatLoading && handleSendChat()}
+                  disabled={chatLoading}
                 />
-                <button type="button" className="chat-send" onClick={sendChat}>
+                <button type="button" className="chat-send" onClick={handleSendChat} disabled={chatLoading}>
                   →
                 </button>
               </div>

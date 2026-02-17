@@ -90,3 +90,15 @@ export async function uploadToS3(
 export async function listS3Files(prefix: string): Promise<S3ObjectInfo[]> {
   return request<S3ObjectInfo[]>(`/files?prefix=${encodeURIComponent(prefix)}`);
 }
+
+/** Send chat message to agent; returns reply. */
+export async function sendChat(
+  jobDescriptionId: string,
+  candidateId: string,
+  query: string
+): Promise<{ reply: string }> {
+  return request<{ reply: string }>('/chat', {
+    method: 'POST',
+    body: JSON.stringify({ jobDescriptionId, candidateId, query }),
+  });
+}
