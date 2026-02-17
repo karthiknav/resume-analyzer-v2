@@ -4,6 +4,51 @@ End-to-end flow from uploading a job opportunity through resume analysis and fol
 
 ---
 
+## UI Flow Summary (Arrow Diagram)
+
+```
+  Opportunities Screen
+         │
+         │  + New Opportunity → pick JD (PDF/DOCX)
+         │         │
+         │         ▼
+         │  getUploadJdUrl() ──► presigned URL ──► upload to S3
+         │         │
+         │         │  [S3 trigger] Lambda invokes agent for Job Analysis → JobAnalysis (DynamoDB)
+         │         │
+         │  ◄──────┘
+         │
+         │  listOpportunities() ──► GET /opportunities ──► show table
+         │
+         │  click row / "View" on opportunity
+         │         │
+         │         ▼
+         └────────► Analysis Screen
+                         │
+                         │  getAnalysis(id) ──► JD + ranked candidates + analysis from S3
+                         │
+                         │  select candidate ──► show profile, scores, skills, gaps, recommendation
+                         │
+                         │  Upload New Resume (drag/drop or choose)
+                         │         │
+                         │         ▼
+                         │  getUploadUrl() ──► presigned URL ──► upload to S3
+                         │         │
+                         │         │  [S3 trigger] Lambda invokes agent for Resume Analysis
+                         │         │              ──► analysis.json → CandidateAnalysis (DynamoDB)
+                         │         │
+                         │  ◄──────┘  refresh & rerank candidates
+                         │
+                         │  type question in chat ──► sendChat(jobId, candidateId, query)
+                         │         │
+                         │         ▼
+                         │  POST /chat ──► Bedrock AgentCore ──► reply
+                         │
+                         └────────────► back to Opportunities
+```
+
+---
+
 ## Overview Diagram
 
 ```
