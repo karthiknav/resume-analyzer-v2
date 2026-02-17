@@ -157,15 +157,23 @@ def get_or_create_session(
     Checks for existing session before creating; no global session state."""
     if job_description_id and candidate_id:
         session_id = hashlib.md5(f"{job_description_id}_{candidate_id}".encode()).hexdigest()[:16]
+        logger.info(f"[session] target session_id={session_id} (job_description_id={job_description_id}, candidate_id={candidate_id})")
     elif resume_key:
         session_data = f"{resume_key}_{job_description_key or 'no_job'}"
         session_id = hashlib.md5(session_data.encode()).hexdigest()[:16]
+        logger.info(f"[session] target session_id={session_id} (resume_key, job_description_key)")
     else:
         return None
 
     actor = Actor(actor_id=ACTOR_ID, session_manager=session_manager)
     try:
         existing = actor.list_sessions()
+        logger.info(f"[session] list_sessions returned {len(existing)} session(s)")
+        for i, s in enumerate(existing):
+            _raw = s.get("sessionId") if isinstance(s, dict) else getattr(s, "sessionId", None)
+            _alt = s.get("session_id") if isinstance(s, dict) else getattr(s, "session_id", None)
+            _keys = list(s.keys()) if isinstance(s, dict) else []
+            logger.info(f"[session]   existing[{i}] sessionId={repr(_raw)} session_id={repr(_alt)} keys={_keys}")
     except ClientError as e:
         if e.response.get('Error', {}).get('Code') == 'ResourceNotFoundException':
             logger.info(f"Actor {ACTOR_ID} not found — no sessions yet, will create new one")
@@ -178,6 +186,7 @@ def get_or_create_session(
         return getattr(s, "sessionId", None) or getattr(s, "session_id", None)
 
     has_session = any(_sid(s) == session_id for s in existing)
+    logger.info(f"[session] has_session={has_session} (looking for session_id={session_id})")
 
     if has_session:
         current_session = MemorySession(
@@ -186,13 +195,13 @@ def get_or_create_session(
             session_id=session_id,
             manager=session_manager,
         )
-        logger.info(f"✅ Reusing existing session: {session_id}")
+        logger.info(f"[session] Reusing existing session_id={session_id}")
     else:
         current_session = session_manager.create_memory_session(
             actor_id=ACTOR_ID,
             session_id=session_id
         )
-        logger.info(f"✅ Created new session: {session_id}")
+        logger.info(f"[session] Created new session_id={session_id}")
 
     return current_session
 

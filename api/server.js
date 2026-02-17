@@ -302,7 +302,6 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ message: 'jobDescriptionId, candidateId, and query are required' });
   }
   try {
-    const runtimeSessionId = crypto.createHash('md5').update(`${jobDescriptionId}_${candidateId}`).digest('hex').slice(0, 16);
     const payload = JSON.stringify({
       query: String(query).trim(),
       job_description_id: jobDescriptionId,
@@ -311,7 +310,6 @@ app.post('/api/chat', async (req, res) => {
     const command = new InvokeAgentRuntimeCommand({
       agentRuntimeArn: AGENT_ARN,
       qualifier: 'DEFAULT',
-      runtimeSessionId,
       payload: new TextEncoder().encode(payload),
     });
     const response = await agentcoreClient.send(command);
