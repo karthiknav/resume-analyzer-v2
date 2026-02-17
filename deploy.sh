@@ -64,15 +64,15 @@ echo "  Documents Bucket: $DOCUMENTS_BUCKET"
 echo "  Execution Role: $EXECUTION_ROLE"
 echo ""
 
-# Create S3 folder structure
-echo "📁 Step 2: Creating S3 folder structure..."
-python create_s3_folders.py $DOCUMENTS_BUCKET
-echo ""
-
-# # Step 2: Deploy Lambda function code
-# echo "📦 Step 2: Deploying Lambda function code..."
-# python deploy_lambda.py
+# # Create S3 folder structure
+# echo "📁 Step 2: Creating S3 folder structure..."
+# python create_s3_folders.py $DOCUMENTS_BUCKET
 # echo ""
+
+# Step 2: Deploy Lambda function code
+echo "📦 Step 2: Deploying Lambda function code..."
+python deploy_lambda.py
+echo ""
 
 # # Step 3: Configure and deploy AgentCore agent
 # echo "🤖 Step 3: Configuring and deploying AgentCore agent..."
