@@ -207,12 +207,15 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
     // 2. Query ranked candidates from CandidateAnalysis
     const candidates = [];
     if (CANDIDATE_TABLE) {
+      console.log(`[analysis] DynamoDB Query: Table=${CANDIDATE_TABLE} jobDescriptionId=${id}`);
       const queryResult = await dynamo.send(new QueryCommand({
         TableName: CANDIDATE_TABLE,
         KeyConditionExpression: 'jobDescriptionId = :jid',
         ExpressionAttributeValues: { ':jid': id },
       }));
       const candidateRows = queryResult.Items ?? [];
+      const candidateIds = candidateRows.map((r) => r.candidateId);
+      console.log(`[analysis] DynamoDB Query result: ${candidateRows.length} row(s), candidateIds=${JSON.stringify(candidateIds)}`);
 
       for (const row of candidateRows) {
         const s3Uri = row.analysisS3Key ?? row.s3Key;
@@ -253,7 +256,7 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
 
         const c = analysis?.candidate ?? {};
         const mapped = {
-          id: c.id ?? row.candidateId,
+          id: row.candidateId,
           name: c.name ?? row.candidateName ?? row.candidateId ?? '',
           level: c.level ?? '',
           experienceYears: c.experienceYears ?? 0,
@@ -297,11 +300,28 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
 
 // ——— POST /api/chat (invoke agent with query for selected candidate) ———
 app.post('/api/chat', async (req, res) => {
-  const { jobDescriptionId, candidateId, query } = req.body || {};
-  if (!jobDescriptionId || !candidateId || !query || typeof query !== 'string') {
+  const { jobDescriptionId, candidateId: requestCandidateId, query } = req.body || {};
+  if (!jobDescriptionId || !requestCandidateId || !query || typeof query !== 'string') {
     return res.status(400).json({ message: 'jobDescriptionId, candidateId, and query are required' });
   }
+  console.log('[chat] jobDescriptionId=%s requestCandidateId=%s query=%s', jobDescriptionId, requestCandidateId, query?.slice(0, 80) + (query?.length > 80 ? '...' : ''));
   try {
+    if (!CANDIDATE_TABLE) {
+      return res.status(400).json({ message: 'Candidate table not configured; cannot resolve candidateId from DynamoDB' });
+    }
+    console.log(`[chat] DynamoDB GetCommand: Table=${CANDIDATE_TABLE} jobDescriptionId=${jobDescriptionId} candidateId=${requestCandidateId}`);
+    const getResult = await dynamo.send(new GetCommand({
+      TableName: CANDIDATE_TABLE,
+      Key: { jobDescriptionId, candidateId: requestCandidateId },
+    }));
+    const candidateRow = getResult.Item;
+    console.log(`[chat] DynamoDB GetCommand result:`, candidateRow ? { candidateId: candidateRow.candidateId, jobDescriptionId: candidateRow.jobDescriptionId } : 'null');
+    if (!candidateRow) {
+      console.log(`[chat] No DynamoDB entry found for jobDescriptionId=${jobDescriptionId} candidateId=${requestCandidateId}`);
+      return res.status(404).json({ message: 'Candidate not found for this opportunity' });
+    }
+    const candidateId = candidateRow.candidateId;
+    console.log(`[chat] Using candidateId from DynamoDB: ${candidateId}`);
     const payload = JSON.stringify({
       query: String(query).trim(),
       job_description_id: jobDescriptionId,
