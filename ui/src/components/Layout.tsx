@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
+import { listOpportunities } from '../api/client';
 
 interface LayoutProps {
   children: ReactNode;
@@ -13,6 +15,17 @@ export function Layout({
   breadcrumbCurrent,
   onNav,
 }: LayoutProps) {
+  const [opportunitiesCount, setOpportunitiesCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    listOpportunities()
+      .then((list) => {
+        if (!cancelled) setOpportunitiesCount(list.length);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [screen]);
+
   return (
     <div className="app-layout">
       <aside className="sidebar">
@@ -32,7 +45,7 @@ export function Layout({
             onClick={() => onNav('opportunities')}
             href="#opportunities"
           >
-            <span className="icon">📋</span> Opportunities <span className="nav-badge">7</span>
+            <span className="icon">📋</span> Opportunities <span className="nav-badge">{opportunitiesCount}</span>
           </a>
           <a
             className={`nav-item ${screen === 'analysis' ? 'active' : ''}`}
@@ -53,10 +66,10 @@ export function Layout({
           </a>
         </nav>
         <div className="sidebar-footer">
-          <div className="avatar">SM</div>
+          <div className="avatar">HA</div>
           <div className="user-info">
-            Sharaf M.
-            <span>Solutions Architect</span>
+            HR Admin
+            <span>Senior Specialist</span>
           </div>
         </div>
       </aside>
@@ -74,11 +87,6 @@ export function Layout({
                   <span className="current">{breadcrumbCurrent}</span>
                 </>
               )}
-            </div>
-          </div>
-          <div className="topbar-right">
-            <div className="topbar-status">
-              <span className="dot" /> All agents online
             </div>
           </div>
         </div>

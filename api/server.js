@@ -17,6 +17,13 @@ import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand } from '@aws-sdk/clie
 const app = express();
 app.use(cors());
 app.use(express.json());
+// API Gateway adds stage (e.g. /prod) to path; strip it so routes like /api/... match
+app.use((req, res, next) => {
+  if (req.path.startsWith('/prod')) {
+    req.url = (req.path.replace(/^\/prod\/?/, '/') || '/') + (req.url.includes('?') ? '?' + req.url.split('?')[1] : '');
+  }
+  next();
+});
 
 const REGION = process.env.AWS_REGION || process.env.REGION || 'us-east-1';
 const BUCKET_NAME = process.env.BUCKET_NAME || process.env.S3_BUCKET || 'amzn-s3-resume-analyzer-v2-bucket-agentcore-206409480438';
@@ -129,7 +136,22 @@ app.get('/api/opportunities', async (req, res) => {
     if (rawItems.length === 0) {
       console.log('[opportunities] Table empty — returning MOCK_OPPORTUNITIES fallback');
     }
-    const items = rawItems.map((item) => {
+    const items = await Promise.all(rawItems.map(async (item) => {
+      const jobId = item.jobDescriptionId ?? item.id ?? item.opportunityId;
+      let candidatesCount = Number(item.candidatesCount ?? item.candidates ?? 0);
+      if (CANDIDATE_TABLE) {
+        try {
+          const q = await dynamo.send(new QueryCommand({
+            TableName: CANDIDATE_TABLE,
+            KeyConditionExpression: 'jobDescriptionId = :jid',
+            ExpressionAttributeValues: { ':jid': jobId },
+            Select: 'COUNT',
+          }));
+          candidatesCount = q.Count ?? 0;
+        } catch (e) {
+          console.warn(`[opportunities] Failed to count candidates for ${jobId}:`, e.message);
+        }
+      }
       const rawStatus = (item.status ?? 'new').toString();
       const status = rawStatus.toLowerCase();
       const keywords = item.keywords;
@@ -141,17 +163,17 @@ app.get('/api/opportunities', async (req, res) => {
         ? (typeof createdAt === 'string' ? createdAt.slice(0, 10) : '—')
         : '—';
       return {
-        id: item.jobDescriptionId ?? item.id ?? item.opportunityId,
+        id: jobId,
         title: item.title ?? item.name ?? 'N/A',
         client: item.client ?? 'N/A',
         keywords: keywordsDisplay,
         s3Key: item.s3Key,
         status: status === 'active' ? 'active' : (status || 'new'),
-        candidatesCount: Number(item.candidatesCount ?? item.candidates ?? 0),
+        candidatesCount,
         topScore: item.topScore != null ? Number(item.topScore) : null,
         created: createdStr,
       };
-    });
+    }));
     const response = items.length ? items : MOCK_OPPORTUNITIES;
     if (!items.length) console.log('[opportunities] Returning MOCK_OPPORTUNITIES due to empty items');
     res.json(response);
@@ -450,16 +472,20 @@ app.get('/api/files', async (req, res) => {
   }
 });
 
+export { app };
+
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Resume Analyzer API on http://localhost:${PORT}`);
-  console.log('  GET  /api/opportunities');
-  console.log('  POST /api/opportunities/upload-jd (upload JD file to S3; no DynamoDB)');
-  console.log('  GET  /api/opportunities/:id/analysis');
-  console.log('  POST /api/chat (invoke agent with jobDescriptionId, candidateId, query)');
-  console.log('  POST /api/upload-url');
-  console.log('  GET  /api/files?prefix=...');
-  if (!BUCKET_NAME) console.log('  (S3: set BUCKET_NAME for upload/list)');
-  if (!OPPORTUNITIES_TABLE) console.log('  (DynamoDB: using mock data; set OPPORTUNITIES_TABLE for real data)');
-  if (!CANDIDATE_TABLE) console.log('  (DynamoDB: set CANDIDATE_TABLE for ranked candidates from CandidateAnalysis)');
-});
+if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  app.listen(PORT, () => {
+    console.log(`Resume Analyzer API on http://localhost:${PORT}`);
+    console.log('  GET  /api/opportunities');
+    console.log('  POST /api/opportunities/upload-jd (upload JD file to S3; no DynamoDB)');
+    console.log('  GET  /api/opportunities/:id/analysis');
+    console.log('  POST /api/chat (invoke agent with jobDescriptionId, candidateId, query)');
+    console.log('  POST /api/upload-url');
+    console.log('  GET  /api/files?prefix=...');
+    if (!BUCKET_NAME) console.log('  (S3: set BUCKET_NAME for upload/list)');
+    if (!OPPORTUNITIES_TABLE) console.log('  (DynamoDB: using mock data; set OPPORTUNITIES_TABLE for real data)');
+    if (!CANDIDATE_TABLE) console.log('  (DynamoDB: set CANDIDATE_TABLE for ranked candidates from CandidateAnalysis)');
+  });
+}

@@ -35,42 +35,90 @@ echo "Stack: $STACK_NAME"
 # uv pip install -r requirements.txt
 # export UV_PROJECT_ENVIRONMENT=.venv
 
-# Step 1: Deploy infrastructure
-echo "🏗️ Step 1: Deploying infrastructure..."
+# Step 1: Deploy roles stack (IAM roles)
+echo "🏗️ Step 1: Deploying roles stack..."
+ROLES_STACK_NAME="${STACK_NAME}-roles"
 aws cloudformation deploy \
-    --template-file template-infrastructure.yaml \
-    --stack-name $STACK_NAME \
-    --parameter-overrides Environment=$ENVIRONMENT AgentArn=PLACEHOLDER \
+    --template-file template-infrastructure-roles.yaml \
+    --stack-name $ROLES_STACK_NAME \
+    --parameter-overrides Environment=$ENVIRONMENT \
     --capabilities CAPABILITY_NAMED_IAM \
     --region $REGION
 
-# Get infrastructure outputs
-echo "📋 Getting infrastructure outputs..."
+LAMBDA_EXECUTION_ROLE_ARN=$(aws cloudformation describe-stacks \
+    --stack-name $ROLES_STACK_NAME \
+    --region $REGION \
+    --query 'Stacks[0].Outputs[?OutputKey==`LambdaExecutionRoleArn`].OutputValue' \
+    --output text)
+
+echo "✅ Roles stack deployed"
+echo ""
+
+# Step 2: Deploy base infrastructure (bucket, DynamoDB, trigger Lambda)
+echo "🏗️ Step 2: Deploying base infrastructure..."
+BASE_STACK_NAME="${STACK_NAME}-base"
+aws cloudformation deploy \
+    --template-file template-infrastructure-base.yaml \
+    --stack-name $BASE_STACK_NAME \
+    --parameter-overrides Environment=$ENVIRONMENT AgentArn=PLACEHOLDER LambdaExecutionRoleArn=$LAMBDA_EXECUTION_ROLE_ARN \
+    --capabilities CAPABILITY_NAMED_IAM \
+    --region $REGION
+
+# Get base stack outputs
+echo "📋 Getting base stack outputs..."
 DOCUMENTS_BUCKET=$(aws cloudformation describe-stacks \
-    --stack-name $STACK_NAME \
+    --stack-name $BASE_STACK_NAME \
     --region $REGION \
     --query 'Stacks[0].Outputs[?OutputKey==`DocumentsBucket`].OutputValue' \
     --output text)
-
+JOB_ANALYSIS_TABLE=$(aws cloudformation describe-stacks \
+    --stack-name $BASE_STACK_NAME \
+    --region $REGION \
+    --query 'Stacks[0].Outputs[?OutputKey==`JobAnalysisTableName`].OutputValue' \
+    --output text)
+CANDIDATE_ANALYSIS_TABLE=$(aws cloudformation describe-stacks \
+    --stack-name $BASE_STACK_NAME \
+    --region $REGION \
+    --query 'Stacks[0].Outputs[?OutputKey==`CandidateAnalysisTableName`].OutputValue' \
+    --output text)
 EXECUTION_ROLE=$(aws cloudformation describe-stacks \
-    --stack-name $STACK_NAME \
+    --stack-name $ROLES_STACK_NAME \
     --region $REGION \
     --query 'Stacks[0].Outputs[?OutputKey==`AgentCoreExecutionRoleArn`].OutputValue' \
     --output text)
 
-
-echo "✅ Infrastructure deployed:"
+echo "✅ Base infrastructure deployed:"
 echo "  Documents Bucket: $DOCUMENTS_BUCKET"
 echo "  Execution Role: $EXECUTION_ROLE"
 echo ""
 
-# # Create S3 folder structure
-# echo "📁 Step 2: Creating S3 folder structure..."
-# python create_s3_folders.py $DOCUMENTS_BUCKET
-# echo ""
+# Step 3: Upload API Lambda zip to S3 (must exist before API stack deploys)
+echo "📦 Step 3: Uploading API Lambda code to S3..."
+export ENVIRONMENT=$ENVIRONMENT
+export AWS_DEFAULT_REGION=$REGION
+python deploy_api_lambda.py
+echo ""
 
-# Step 2: Deploy Lambda function code
-echo "📦 Step 2: Deploying Lambda function code..."
+# Step 4: Deploy API stack (API Gateway + API Lambda)
+echo "🏗️ Step 4: Deploying API stack (API Gateway + Lambda)..."
+API_STACK_NAME="${STACK_NAME}-api"
+aws cloudformation deploy \
+    --template-file template-infrastructure-api.yaml \
+    --stack-name $API_STACK_NAME \
+    --parameter-overrides \
+        Environment=$ENVIRONMENT \
+        DocumentsBucketName=$DOCUMENTS_BUCKET \
+        JobAnalysisTableName=$JOB_ANALYSIS_TABLE \
+        CandidateAnalysisTableName=$CANDIDATE_ANALYSIS_TABLE \
+        AgentArn=PLACEHOLDER \
+    --capabilities CAPABILITY_NAMED_IAM \
+    --region $REGION
+
+echo "✅ API stack deployed"
+echo ""
+
+# Step 5: Deploy trigger Lambda function code
+echo "📦 Step 5: Deploying trigger Lambda function code..."
 python deploy_lambda.py
 echo ""
 

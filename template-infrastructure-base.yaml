@@ -1,0 +1,138 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Resume Analyzer - Base Infrastructure (bucket, DynamoDB, trigger Lambda). Deploy AFTER roles stack, then run deploy_api_lambda.py, then deploy template-infrastructure-api.yaml'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'agentcore'
+    Description: Environment name for resource naming
+
+  AgentArn:
+    Type: String
+    Description: Bedrock AgentCore Runtime ARN (will be updated after deployment)
+    Default: 'PLACEHOLDER'
+
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: IAM Role ARN for trigger Lambda (output from roles stack)
+
+Resources:
+  # DynamoDB Tables
+  JobAnalysisTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'JobAnalysis-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: jobDescriptionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: jobDescriptionId
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  CandidateAnalysisTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'CandidateAnalysis-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: jobDescriptionId
+          AttributeType: S
+        - AttributeName: candidateId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: jobDescriptionId
+          KeyType: HASH
+        - AttributeName: candidateId
+          KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  CountersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'Counters-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: counterId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: counterId
+          KeyType: HASH
+
+  # Trigger Lambda Function
+  TriggerLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'ResumeAnalyzerTrigger-${Environment}'
+      Runtime: python3.12
+      Handler: lambda_trigger.lambda_handler
+      Role: !Ref LambdaExecutionRoleArn
+      Timeout: 300
+      Environment:
+        Variables:
+          AGENT_ARN: !Ref AgentArn
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Placeholder'}
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TriggerLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::amzn-s3-resume-analyzer-v2-bucket-${Environment}-${AWS::AccountId}'
+
+  # S3 Bucket for documents (must exist before deploy_api_lambda.py uploads zip)
+  DocumentsBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: LambdaInvokePermission
+    Properties:
+      BucketName: !Sub 'amzn-s3-resume-analyzer-v2-bucket-${Environment}-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt TriggerLambdaFunction.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: opportunities/
+
+Outputs:
+  DocumentsBucket:
+    Description: 'S3 bucket for documents (used by deploy_api_lambda.py)'
+    Value: !Ref DocumentsBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-DocumentsBucket'
+
+  LambdaFunctionArn:
+    Description: 'Lambda function ARN for S3 trigger'
+    Value: !GetAtt TriggerLambdaFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaFunctionArn'
+
+  JobAnalysisTableName:
+    Description: 'DynamoDB table for job analysis'
+    Value: !Ref JobAnalysisTable
+    Export:
+      Name: !Sub '${AWS::StackName}-JobAnalysisTable'
+
+  CandidateAnalysisTableName:
+    Description: 'DynamoDB table for candidate analysis'
+    Value: !Ref CandidateAnalysisTable
+    Export:
+      Name: !Sub '${AWS::StackName}-CandidateAnalysisTable'

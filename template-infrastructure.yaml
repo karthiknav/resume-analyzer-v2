@@ -237,34 +237,6 @@ Resources:
                   - !GetAtt CandidateAnalysisTable.Arn
                   - !GetAtt CountersTable.Arn
 
-  # Lambda Function
-  TriggerLambdaFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: !Sub 'ResumeAnalyzerTrigger-${Environment}'
-      Runtime: python3.12
-      Handler: lambda_trigger.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Timeout: 300
-      Environment:
-        Variables:
-          AGENT_ARN: !Ref AgentArn
-          ENVIRONMENT: !Ref Environment
-      Code:
-        ZipFile: |
-          # Placeholder - will be updated by deployment script
-          def lambda_handler(event, context):
-              return {'statusCode': 200, 'body': 'Placeholder'}
-
-  # Lambda Permission for S3
-  LambdaInvokePermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref TriggerLambdaFunction
-      Action: lambda:InvokeFunction
-      Principal: s3.amazonaws.com
-      SourceArn: !Sub 'arn:aws:s3:::amzn-s3-resume-analyzer-v2-bucket-${Environment}-${AWS::AccountId}'
-
   # DynamoDB Table for Job Analysis
   JobAnalysisTable:
     Type: AWS::DynamoDB::Table
@@ -312,6 +284,128 @@ Resources:
         - AttributeName: counterId
           KeyType: HASH
 
+  # API Lambda Execution Role
+  ApiLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'ResumeAnalyzerApiLambdaRole-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ApiLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt DocumentsBucket.Arn
+                  - !Sub '${DocumentsBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                Resource:
+                  - !GetAtt JobAnalysisTable.Arn
+                  - !GetAtt CandidateAnalysisTable.Arn
+              - Effect: Allow
+                Action: bedrock-agentcore:InvokeAgentRuntime
+                Resource: '*'
+
+  # API Lambda Function
+  ApiLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'ResumeAnalyzerApi-${Environment}'
+      Runtime: nodejs20.x
+      Handler: lambda.handler
+      Role: !GetAtt ApiLambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref DocumentsBucket
+          OPPORTUNITIES_TABLE: !Ref JobAnalysisTable
+          CANDIDATE_TABLE: !Ref CandidateAnalysisTable
+          AGENT_ARN: !Ref AgentArn
+      Code:
+        S3Bucket: !Ref DocumentsBucket
+        S3Key: api-lambda/deployment.zip
+
+  # API Gateway REST API
+  ApiGatewayRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub 'ResumeAnalyzerApi-${Environment}'
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  ApiGatewayResourceProxy:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      ParentId: !GetAtt ApiGatewayRestApi.RootResourceId
+      PathPart: '{proxy+}'
+
+  ApiGatewayMethodProxy:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      ResourceId: !Ref ApiGatewayResourceProxy
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambdaFunction.Arn}/invocations'
+
+  ApiGatewayMethodRoot:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      ResourceId: !GetAtt ApiGatewayRestApi.RootResourceId
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambdaFunction.Arn}/invocations'
+
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ApiGatewayMethodProxy
+      - ApiGatewayMethodRoot
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      DeploymentId: !Ref ApiGatewayDeployment
+      StageName: prod
+
+  ApiGatewayLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/*/*'
+
 Outputs:
   DocumentsBucket:
     Description: 'S3 bucket for documents'
@@ -342,3 +436,9 @@ Outputs:
     Value: !Ref CandidateAnalysisTable
     Export:
       Name: !Sub '${AWS::StackName}-CandidateAnalysisTable'
+
+  ApiGatewayUrl:
+    Description: 'API Gateway base URL (append /api/... for API routes)'
+    Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${ApiGatewayStage}'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiGatewayUrl'
