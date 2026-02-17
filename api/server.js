@@ -7,10 +7,10 @@
 
 import express from 'express';
 import cors from 'cors';
-import { S3Client, PutObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, ScanCommand, GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 const app = express();
 app.use(cors());
@@ -19,6 +19,7 @@ app.use(express.json());
 const REGION = process.env.AWS_REGION || process.env.REGION || 'us-east-1';
 const BUCKET_NAME = process.env.BUCKET_NAME || process.env.S3_BUCKET || 'amzn-s3-resume-analyzer-v2-bucket-agentcore-206409480438';
 const OPPORTUNITIES_TABLE = process.env.OPPORTUNITIES_TABLE || process.env.DYNAMODB_TABLE || 'JobAnalysis-agentcore';
+const CANDIDATE_TABLE = process.env.CANDIDATE_TABLE || 'CandidateAnalysis-agentcore';
 
 const s3Client = new S3Client({ region: REGION });
 const dynamoClient = new DynamoDBClient({ region: REGION });
@@ -148,49 +149,127 @@ app.get('/api/opportunities', async (req, res) => {
   }
 });
 
+// Parse s3://bucket/key to { bucket, key }
+function parseS3Uri(uri) {
+  const m = String(uri || '').match(/^s3:\/\/([^/]+)\/(.+)$/);
+  return m ? { bucket: m[1], key: m[2] } : null;
+}
+
 // ——— GET /api/opportunities/:id/analysis ———
-// Table key is jobDescriptionId (so_id from your trigger).
+// 1. Get JD from JobAnalysis; 2. Query ranked candidates from CandidateAnalysis;
+// 3. Fetch each candidate's analysis JSON from S3 (analysisS3Key); 4. Map to UI format.
 app.get('/api/opportunities/:id/analysis', async (req, res) => {
   const { id } = req.params;
-  console.log('[analysis] opportunity id passed:', id);
+  console.log('[analysis] opportunity id:', id);
   try {
     if (!OPPORTUNITIES_TABLE) {
       const mock = { ...MOCK_ANALYSIS, opportunityId: id, opportunityTitle: `Opportunity ${id}` };
       return res.json(mock);
     }
-    const key = { jobDescriptionId: id };
-    console.log('[analysis] DynamoDB GetCommand table:', OPPORTUNITIES_TABLE, 'key:', JSON.stringify(key));
-    const result = await dynamo.send(new GetCommand({
+
+    // 1. Get job from JobAnalysis
+    const jobResult = await dynamo.send(new GetCommand({
       TableName: OPPORTUNITIES_TABLE,
-      Key: key,
+      Key: { jobDescriptionId: id },
     }));
-    console.log('[analysis] result.Item:', result.Item == null ? 'null/undefined' : JSON.stringify(result.Item, null, 2));
-    if (!result.Item) {
-      return res.json({ ...MOCK_ANALYSIS, opportunityId: id, opportunityTitle: `Opportunity ${id}` });
-    }
-    const item = result.Item;
-    // jd.tags from item.keywords, jd.summary from item.summary
-    const keywordsRaw = item.keywords;
+    const jobItem = jobResult.Item;
+    const keywordsRaw = jobItem?.keywords;
     const jdTags = Array.isArray(keywordsRaw)
       ? keywordsRaw.map((k) => (typeof k === 'string' ? { label: k } : { label: k?.label ?? String(k), years: k?.years }))
-      : (item.jd?.tags ?? MOCK_ANALYSIS.jd.tags);
+      : (jobItem?.jd?.tags ?? MOCK_ANALYSIS.jd.tags);
     const jd = {
-      tags: jdTags,
-      summary: item.summary ?? item.jd?.summary ?? MOCK_ANALYSIS.jd.summary,
+      tags: jdTags ?? [],
+      summary: jobItem?.summary ?? jobItem?.jd?.summary ?? MOCK_ANALYSIS.jd.summary ?? '',
     };
-    res.json({
+    const opportunityTitle = jobItem?.title
+      ? `${jobItem.title}${jobItem.client ? ` — ${jobItem.client}` : ''}`
+      : id;
+
+    // 2. Query ranked candidates from CandidateAnalysis
+    const candidates = [];
+    if (CANDIDATE_TABLE) {
+      const queryResult = await dynamo.send(new QueryCommand({
+        TableName: CANDIDATE_TABLE,
+        KeyConditionExpression: 'jobDescriptionId = :jid',
+        ExpressionAttributeValues: { ':jid': id },
+      }));
+      const candidateRows = queryResult.Items ?? [];
+
+      for (const row of candidateRows) {
+        const s3Uri = row.analysisS3Key ?? row.s3Key;
+        if (!s3Uri) {
+          candidates.push({
+            id: row.candidateId,
+            name: row.candidateName ?? row.candidateId,
+            level: '',
+            experienceYears: 0,
+            overallScore: 0,
+            coreScore: 0,
+            domainScore: 0,
+            softScore: 0,
+            initials: (row.candidateName ?? row.candidateId ?? '?').slice(0, 2).toUpperCase(),
+            coreSkills: [],
+            domainSkills: [],
+            evidenceSnippets: [],
+            gaps: [],
+            recommendation: '',
+          });
+          continue;
+        }
+
+        const parsed = parseS3Uri(s3Uri);
+        const bucket = parsed?.bucket ?? BUCKET_NAME;
+        const key = parsed?.key;
+
+        let analysis = null;
+        if (key && BUCKET_NAME) {
+          try {
+            const obj = await s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+            const body = await obj.Body?.transformToString?.() ?? '';
+            analysis = JSON.parse(body || '{}');
+          } catch (e) {
+            console.warn(`[analysis] Failed to fetch S3 ${bucket}/${key}:`, e.message);
+          }
+        }
+
+        const c = analysis?.candidate ?? {};
+        const mapped = {
+          id: c.id ?? row.candidateId,
+          name: c.name ?? row.candidateName ?? row.candidateId ?? '',
+          level: c.level ?? '',
+          experienceYears: c.experienceYears ?? 0,
+          overallScore: c.overallScore ?? 0,
+          coreScore: c.coreScore ?? 0,
+          domainScore: c.domainScore ?? 0,
+          softScore: c.softScore ?? 0,
+          initials: c.initials ?? (c.name ?? row.candidateName ?? '?').slice(0, 2).toUpperCase(),
+          coreSkills: analysis?.coreSkills ?? [],
+          domainSkills: analysis?.domainSkills ?? [],
+          evidenceSnippets: analysis?.evidenceSnippets ?? [],
+          gaps: analysis?.gaps ?? [],
+          recommendation: analysis?.recommendation ?? '',
+        };
+        candidates.push(mapped);
+      }
+
+      // Sort by overallScore descending (ranked)
+      candidates.sort((a, b) => (b.overallScore ?? 0) - (a.overallScore ?? 0));
+    }
+
+    const payload = {
       opportunityId: id,
-      opportunityTitle: item.title ? `${item.title} — ${item.client || ''}` : id,
+      opportunityTitle,
       jd,
-      candidates: item.candidate != null ? [item.candidate] : (item.candidates ?? MOCK_ANALYSIS.candidates),
-      coreSkills: item.coreSkills ?? MOCK_ANALYSIS.coreSkills,
-      domainSkills: item.domainSkills ?? MOCK_ANALYSIS.domainSkills,
-      evidenceSnippets: item.evidenceSnippets ?? MOCK_ANALYSIS.evidenceSnippets,
-      gaps: item.gaps ?? MOCK_ANALYSIS.gaps,
-      recommendation: item.recommendation ?? MOCK_ANALYSIS.recommendation,
-    });
+      candidates: candidates.length ? candidates : (jobItem?.candidates ?? MOCK_ANALYSIS.candidates),
+      coreSkills: [],  // Per-candidate; use selected candidate's
+      domainSkills: [],
+      evidenceSnippets: [],
+      gaps: [],
+      recommendation: '',
+    };
+    res.json(payload);
   } catch (err) {
-    console.error('DynamoDB get error:', err);
+    console.error('[analysis] Error:', err);
     res.json({ ...MOCK_ANALYSIS, opportunityId: id, opportunityTitle: `Opportunity ${id}` });
   }
 });
@@ -270,4 +349,5 @@ app.listen(PORT, () => {
   console.log('  GET  /api/files?prefix=...');
   if (!BUCKET_NAME) console.log('  (S3: set BUCKET_NAME for upload/list)');
   if (!OPPORTUNITIES_TABLE) console.log('  (DynamoDB: using mock data; set OPPORTUNITIES_TABLE for real data)');
+  if (!CANDIDATE_TABLE) console.log('  (DynamoDB: set CANDIDATE_TABLE for ranked candidates from CandidateAnalysis)');
 });

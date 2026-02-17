@@ -96,11 +96,12 @@ export function Analysis({
 
   const cand = selected ?? data.candidates?.[0];
   const jd = data.jd ?? { tags: [], summary: '' };
-  const coreSkills = data.coreSkills ?? [];
-  const domainSkills = data.domainSkills ?? [];
-  const evidenceSnippets = data.evidenceSnippets ?? [];
-  const gaps = data.gaps ?? [];
-  const recommendation = data.recommendation ?? '';
+  // Use selected candidate's analysis from S3; fallback to legacy data
+  const coreSkills = cand?.coreSkills ?? data.coreSkills ?? [];
+  const domainSkills = cand?.domainSkills ?? data.domainSkills ?? [];
+  const evidenceSnippets = cand?.evidenceSnippets ?? data.evidenceSnippets ?? [];
+  const gaps = cand?.gaps ?? data.gaps ?? [];
+  const recommendation = cand?.recommendation ?? data.recommendation ?? '';
 
   return (
     <div className="page">
@@ -263,12 +264,14 @@ export function Analysis({
                     <div className="skills-check-grid">
                       {coreSkills.map((s) => (
                         <div key={s.name} className="skill-check-item">
-                          <div className={`skill-check-icon check-${s.status}`}>
+                          <div className={`skill-check-icon check-${s.status ?? 'partial'}`}>
                             {s.status === 'pass' ? '✓' : s.status === 'partial' ? '~' : '✗'}
                           </div>
                           <div className="skill-check-detail">
                             <div className="skill-check-name">{s.name}</div>
-                            <div className="skill-check-years">{s.years} • {s.level}</div>
+                            <div className="skill-check-years">
+                              {[s.years, s.level].filter(Boolean).join(' • ')}
+                            </div>
                           </div>
                         </div>
                       ))}
