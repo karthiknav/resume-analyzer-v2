@@ -7,20 +7,37 @@ const MAX_JD_SIZE_MB = 10;
 
 const STATUS_BADGE: Record<string, string> = {
   new: 'badge-new',
+  active: 'badge-analyzed',
   progress: 'badge-progress',
+  in_progress: 'badge-progress',
   analyzed: 'badge-analyzed',
+  completed: 'badge-closed',
   closed: 'badge-closed',
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  new: 'New',
+  active: 'Active',
+  progress: 'In Progress',
+  in_progress: 'In Progress',
+  analyzed: 'Analyzed',
+  completed: 'Closed',
+  closed: 'Closed',
+};
+
+function getStatusDisplay(status: string): { badgeClass: string; label: string } {
+  const normalized = (status || '').toLowerCase().replace(/\s+/g, '_');
+  const badgeClass = STATUS_BADGE[normalized] ?? 'badge-closed';
+  const label = (STATUS_LABEL[normalized] ?? status) || '—';
+  return { badgeClass, label };
+}
+
 function Badge({ status }: { status: string }) {
-  const c = STATUS_BADGE[status] ?? 'badge-closed';
+  const { badgeClass, label } = getStatusDisplay(status);
   return (
-    <span className={`badge ${c}`}>
+    <span className={`badge ${badgeClass}`}>
       <span className="dot-sm" />
-      {status === 'new' && 'New'}
-      {status === 'progress' && 'In Progress'}
-      {status === 'analyzed' && 'Analyzed'}
-      {status === 'closed' && 'Closed'}
+      {label}
     </span>
   );
 }
@@ -97,7 +114,9 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
   const filtered =
     filter === 'all'
       ? opportunities
-      : opportunities.filter((o) => o.status === filter);
+      : filter === 'new'
+        ? opportunities.filter((o) => o.status === 'new' || o.status === 'active')
+        : opportunities.filter((o) => o.status === filter);
 
   const stats = {
     total: opportunities.length,
@@ -197,15 +216,15 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
             Loading…
           </div>
         ) : (
-          <table>
+          <table className="opportunities-list-table">
             <thead>
               <tr>
-                <th>Opportunity</th>
+                <th className="col-opportunity">Opportunity</th>
                 <th>Client</th>
                 <th>Status</th>
                 <th>Candidates</th>
                 <th>Top Score</th>
-                <th>Created</th>
+                <th className="col-created">Created</th>
                 <th />
               </tr>
             </thead>
@@ -239,7 +258,7 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
                       {row.topScore != null ? `${row.topScore}%` : '—'}
                     </span>
                   </td>
-                  <td className="opp-meta">{row.created}</td>
+                  <td className="opp-meta opp-created">{row.created}</td>
                   <td>
                     <span
                       className="action-link"

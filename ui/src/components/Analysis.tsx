@@ -145,32 +145,50 @@ export function Analysis({
                 {data.candidates?.length ?? 0} analyzed
               </span>
             </div>
-            <div className="card-body" style={{ padding: '8px 12px' }}>
-              {data.candidates?.map((c, i) => (
-                <div
-                  key={c.id}
-                  className={`candidate-item ${cand?.id === c.id ? 'active' : ''}`}
-                  onClick={() => setSelected(c)}
-                >
-                  <div className={`candidate-rank rank-${Math.min(i + 1, 4)}`}>
-                    {i + 1}
-                  </div>
-                  <div className="candidate-info">
-                    <div className="candidate-name">{c.name}</div>
-                    <div className="candidate-level">
-                      {c.level} • {c.experienceYears} yrs exp
-                    </div>
-                  </div>
-                  <div className="candidate-score">
-                    <div className={`score-value ${ScoreClass(c.overallScore)}`}>
-                      {c.overallScore}%
-                    </div>
-                    <div className="score-breakdown">
-                      Core {c.coreScore} • Dom {c.domainScore} • Soft {c.softScore}
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="card-body ranked-candidates-list" style={{ padding: 0 }}>
+              <table className="candidates-table">
+                <thead>
+                  <tr>
+                    <th className="col-rank">#</th>
+                    <th className="col-name">Name</th>
+                    <th className="col-level">Level</th>
+                    <th className="col-score">Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.candidates?.map((c, i) => (
+                    <tr
+                      key={c.id}
+                      className={cand?.id === c.id ? 'active' : ''}
+                      onClick={() => setSelected(c)}
+                    >
+                      <td className="col-rank">
+                        <span className={`candidate-rank rank-${Math.min(i + 1, 4)}`}>
+                          {i + 1}
+                        </span>
+                      </td>
+                      <td className="col-name">
+                        <span className="candidate-name">{c.name}</span>
+                      </td>
+                      <td className="col-level">
+                        <span className="candidate-level">
+                          {c.level} • {c.experienceYears} yrs
+                        </span>
+                      </td>
+                      <td className="col-score">
+                        <div className="candidate-score">
+                          <span className={`score-value ${ScoreClass(c.overallScore)}`}>
+                            {c.overallScore}%
+                          </span>
+                          <span className="score-breakdown">
+                            {c.coreScore}/{c.domainScore}/{c.softScore}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
 

@@ -193,6 +193,13 @@ body {
   background: var(--bg-white); border-radius: var(--radius-lg);
   border: 1px solid var(--border); box-shadow: var(--shadow-card); overflow: hidden;
 }
+
+/* First column shorter so Created date doesn't wrap */
+.opportunities-list-table { table-layout: fixed; width: 100%; }
+.opportunities-list-table .col-opportunity { width: 22%; max-width: 220px; }
+.opportunities-list-table .col-created { width: 10%; white-space: nowrap; }
+.opportunities-list-table .opp-created { white-space: nowrap; }
+
 .opportunity-table-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--border); }
 .opportunity-table-header h3 { font-size: 15px; font-weight: 700; }
 .table-filters { display: flex; gap: 8px; }
@@ -226,7 +233,7 @@ tbody td { padding: 16px 24px; font-size: 14px; }
 
 .analysis-layout {
   display: grid;
-  grid-template-columns: minmax(0, 280px) 1fr;
+  grid-template-columns: minmax(280px, 320px) 1fr;
   gap: 20px;
   min-width: 0;
 }
@@ -241,6 +248,76 @@ tbody td { padding: 16px 24px; font-size: 14px; }
 .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
 .card-header h3 { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
 .card-body { padding: 16px 20px; }
+
+/* Ranked candidates: real table */
+.ranked-candidates-list .candidates-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.ranked-candidates-list .candidates-table thead th {
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary);
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+}
+.ranked-candidates-list .candidates-table .col-rank { width: 36px; text-align: center; }
+.ranked-candidates-list .candidates-table .col-name { min-width: 0; }
+.ranked-candidates-list .candidates-table .col-level { width: 72px; font-size: 11px; }
+.ranked-candidates-list .candidates-table .col-score { width: 58px; text-align: right; }
+.ranked-candidates-list .candidates-table tbody tr {
+  cursor: pointer;
+  transition: background 0.12s;
+  border-bottom: 1px solid var(--border);
+}
+.ranked-candidates-list .candidates-table tbody tr:last-child { border-bottom: none; }
+.ranked-candidates-list .candidates-table tbody tr:hover { background: var(--bg-primary); }
+.ranked-candidates-list .candidates-table tbody tr.active { background: var(--accent-primary-light); }
+.ranked-candidates-list .candidates-table tbody td {
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+.ranked-candidates-list .candidates-table .col-rank .candidate-rank {
+  width: 26px; height: 26px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.ranked-candidates-list .candidate-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  max-width: 140px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.ranked-candidates-list .candidate-level {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.ranked-candidates-list .candidate-score {
+  text-align: right;
+  white-space: nowrap;
+}
+.ranked-candidates-list .score-value {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  display: block;
+  line-height: 1.2;
+}
+.ranked-candidates-list .score-breakdown {
+  font-size: 9px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  display: block;
+  line-height: 1.2;
+}
 
 .jd-tag {
   display: inline-flex; align-items: center; gap: 5px;
@@ -267,14 +344,13 @@ tbody td { padding: 16px 24px; font-size: 14px; }
 .rank-4 { background: #F1F5F9; color: #94A3B8; }
 .candidate-info { flex: 1; min-width: 0; }
 .candidate-name {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   line-height: 1.3;
-  word-break: break-word;
 }
-.candidate-level { font-size: 10px; color: var(--text-tertiary); margin-top: 2px; }
-.candidate-score { text-align: right; flex-shrink: 0; }
+.candidate-level { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+.candidate-score { text-align: right; flex-shrink: 0; min-width: 52px; }
 .score-value { font-size: 18px; font-weight: 700; font-family: var(--font-mono); }
 .score-high { color: var(--accent-green); }
 .score-medium { color: var(--accent-amber); }
@@ -383,6 +459,9 @@ tbody td { padding: 16px 24px; font-size: 14px; }
 }
 .upload-zone:hover, .upload-zone.dragging { border-color: var(--accent-primary); background: var(--accent-primary-light); }
 .upload-zone input[type="file"] { display: none; }
+.upload-resume-card-body { cursor: pointer; }
+.upload-resume-card-body .btn { cursor: pointer; }
+.upload-resume-card-body:has(.upload-zone.dragging) { cursor: copy; }
 .upload-error { color: var(--accent-red); font-size: 12px; margin-top: 8px; }
 .upload-success { color: var(--accent-green); font-size: 12px; margin-top: 8px; }
 

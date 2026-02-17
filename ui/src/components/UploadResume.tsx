@@ -72,7 +72,19 @@ export function UploadResume({ opportunityId, candidateId, onUploadComplete }: U
 
   return (
     <div className="card">
-      <div className="card-body" style={{ textAlign: 'center', padding: 24 }}>
+      <div
+        className="card-body upload-resume-card-body"
+        style={{ textAlign: 'center', padding: 24 }}
+        onClick={() => !uploading && inputRef.current?.click()}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          onChange={onFileChange}
+          disabled={uploading}
+          style={{ display: 'none' }}
+        />
         <div
           className={`upload-zone ${dragging ? 'dragging' : ''}`}
           onDragOver={(e) => {
@@ -81,21 +93,16 @@ export function UploadResume({ opportunityId, candidateId, onUploadComplete }: U
           }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
-          onClick={() => inputRef.current?.click()}
         >
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            onChange={onFileChange}
-            disabled={uploading}
-          />
           <div style={{ fontSize: 32, marginBottom: 8 }}>📎</div>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
             Upload New Resume
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>
             PDF or DOCX • Max {MAX_SIZE_MB}MB
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 12 }}>
+            Saves to opportunities / this job / candidates
           </div>
           <button
             type="button"
@@ -106,7 +113,7 @@ export function UploadResume({ opportunityId, candidateId, onUploadComplete }: U
               inputRef.current?.click();
             }}
           >
-            {uploading ? 'Uploading…' : 'Choose File & Upload to S3'}
+            {uploading ? 'Uploading…' : 'Choose file…'}
           </button>
         </div>
         {error && <div className="upload-error">{error}</div>}

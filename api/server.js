@@ -111,22 +111,36 @@ app.post('/api/opportunities/upload-jd', async (req, res) => {
 });
 
 // ——— GET /api/opportunities ———
+// DynamoDB schema: jobDescriptionId (pk), title, client, keywords[], s3Key, createdAt, status
 app.get('/api/opportunities', async (req, res) => {
   try {
     if (!OPPORTUNITIES_TABLE) {
       return res.json(MOCK_OPPORTUNITIES);
     }
     const result = await dynamo.send(new ScanCommand({ TableName: OPPORTUNITIES_TABLE }));
-    const items = (result.Items || []).map((item) => ({
-      id: item.id ?? item.opportunityId,
-      title: item.title ?? item.name,
-      client: item.client,
-      keywords: item.keywords,
-      status: item.status ?? 'new',
-      candidatesCount: Number(item.candidatesCount ?? item.candidates ?? 0),
-      topScore: item.topScore != null ? Number(item.topScore) : null,
-      created: item.created ?? item.createdAt ?? '—',
-    }));
+    const items = (result.Items || []).map((item) => {
+      const rawStatus = (item.status ?? 'new').toString();
+      const status = rawStatus.toLowerCase();
+      const keywords = item.keywords;
+      const keywordsDisplay = Array.isArray(keywords)
+        ? keywords.join(', ')
+        : keywords != null ? String(keywords) : '';
+      const createdAt = item.createdAt ?? item.created;
+      const createdStr = createdAt
+        ? (typeof createdAt === 'string' ? createdAt.slice(0, 10) : '—')
+        : '—';
+      return {
+        id: item.jobDescriptionId ?? item.id ?? item.opportunityId,
+        title: item.title ?? item.name ?? 'N/A',
+        client: item.client ?? 'N/A',
+        keywords: keywordsDisplay,
+        s3Key: item.s3Key,
+        status: status === 'active' ? 'active' : (status || 'new'),
+        candidatesCount: Number(item.candidatesCount ?? item.candidates ?? 0),
+        topScore: item.topScore != null ? Number(item.topScore) : null,
+        created: createdStr,
+      };
+    });
     res.json(items.length ? items : MOCK_OPPORTUNITIES);
   } catch (err) {
     console.error('DynamoDB scan error:', err);
@@ -135,25 +149,39 @@ app.get('/api/opportunities', async (req, res) => {
 });
 
 // ——— GET /api/opportunities/:id/analysis ———
+// Table key is jobDescriptionId (so_id from your trigger).
 app.get('/api/opportunities/:id/analysis', async (req, res) => {
   const { id } = req.params;
+  console.log('[analysis] opportunity id passed:', id);
   try {
     if (!OPPORTUNITIES_TABLE) {
       const mock = { ...MOCK_ANALYSIS, opportunityId: id, opportunityTitle: `Opportunity ${id}` };
       return res.json(mock);
     }
+    const key = { jobDescriptionId: id };
+    console.log('[analysis] DynamoDB GetCommand table:', OPPORTUNITIES_TABLE, 'key:', JSON.stringify(key));
     const result = await dynamo.send(new GetCommand({
       TableName: OPPORTUNITIES_TABLE,
-      Key: { id },
+      Key: key,
     }));
+    console.log('[analysis] result.Item:', result.Item == null ? 'null/undefined' : JSON.stringify(result.Item, null, 2));
     if (!result.Item) {
       return res.json({ ...MOCK_ANALYSIS, opportunityId: id, opportunityTitle: `Opportunity ${id}` });
     }
     const item = result.Item;
+    // jd.tags from item.keywords, jd.summary from item.summary
+    const keywordsRaw = item.keywords;
+    const jdTags = Array.isArray(keywordsRaw)
+      ? keywordsRaw.map((k) => (typeof k === 'string' ? { label: k } : { label: k?.label ?? String(k), years: k?.years }))
+      : (item.jd?.tags ?? MOCK_ANALYSIS.jd.tags);
+    const jd = {
+      tags: jdTags,
+      summary: item.summary ?? item.jd?.summary ?? MOCK_ANALYSIS.jd.summary,
+    };
     res.json({
       opportunityId: id,
       opportunityTitle: item.title ? `${item.title} — ${item.client || ''}` : id,
-      jd: item.jd ?? MOCK_ANALYSIS.jd,
+      jd,
       candidates: item.candidates ?? MOCK_ANALYSIS.candidates,
       coreSkills: item.coreSkills ?? MOCK_ANALYSIS.coreSkills,
       domainSkills: item.domainSkills ?? MOCK_ANALYSIS.domainSkills,
@@ -180,16 +208,13 @@ app.post('/api/upload-url', async (req, res) => {
   if (!BUCKET_NAME) {
     return res.status(500).json({ message: 'S3 bucket not configured (set BUCKET_NAME)' });
   }
-  const { opportunityId, candidateId, filename, contentType } = req.body || {};
+  const { opportunityId, filename, contentType } = req.body || {};
   if (!opportunityId || !filename) {
     return res.status(400).json({ message: 'opportunityId and filename required' });
   }
   const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-  // Use candidateId if provided, else place new uploads under candidates/upload_<timestamp>/
-  const candidateFolder = candidateId && String(candidateId).trim()
-    ? String(candidateId).trim()
-    : `upload_${Date.now()}`;
-  const key = `opportunities/${opportunityId}/candidates/${candidateFolder}/${safeName}`;
+  // Directly under opportunities/<jobId>/candidates/ (no subfolder)
+  const key = `opportunities/${opportunityId}/candidates/${safeName}`;
   try {
     const uploadUrl = await getSignedUrl(
       s3Client,

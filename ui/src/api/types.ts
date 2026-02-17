@@ -1,12 +1,13 @@
 /** Types for Resume Analyzer API (DynamoDB + S3) */
 
-export type OpportunityStatus = 'new' | 'progress' | 'analyzed' | 'closed';
+export type OpportunityStatus = 'new' | 'active' | 'progress' | 'analyzed' | 'closed';
 
 export interface Opportunity {
   id: string;
   title: string;
   client: string;
   keywords?: string;
+  s3Key?: string;
   status: OpportunityStatus;
   candidatesCount: number;
   topScore?: number;
