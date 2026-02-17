@@ -339,22 +339,34 @@ app.post('/api/chat', async (req, res) => {
     const text = await response.response.transformToString();
     // If content-type is event-stream, parse and extract text; otherwise return as-is
     if (response.contentType?.includes('text/event-stream')) {
-      const lines = text.split('\n').filter((l) => l.startsWith('data: '));
       const parts = [];
-      for (const line of lines) {
-        const data = line.slice(6).trim();
-        if (data && data !== '[DONE]') {
-          try {
-            const parsed = JSON.parse(data);
-            const content =
+      // Split by "data: " to handle both newline-separated and concatenated events
+      const segments = text.split(/data:\s+/).map((s) => s.trim()).filter(Boolean);
+      for (const data of segments) {
+        if (!data || data === '[DONE]') continue;
+        try {
+          const parsed = JSON.parse(data);
+          let content;
+          if (typeof parsed === 'string') {
+            content = parsed;
+          } else {
+            content =
               parsed?.result?.message?.content?.[0]?.text ??
               parsed?.content?.[0]?.text ??
-              parsed?.content ??
+              (Array.isArray(parsed?.content) ? parsed.content[0]?.text : parsed?.content) ??
               parsed?.text;
-            if (content) parts.push(typeof content === 'string' ? content : JSON.stringify(content));
-          } catch {
-            if (data && data.startsWith('{')) parts.push(data);
-            else if (data) parts.push(data);
+          }
+          if (content) parts.push(typeof content === 'string' ? content : JSON.stringify(content));
+        } catch {
+          // Plain JSON string like "Base" – parse to get the inner text
+          if (data.startsWith('"')) {
+            try {
+              parts.push(JSON.parse(data));
+            } catch {
+              parts.push(data.replace(/^"|"$/g, ''));
+            }
+          } else if (data.startsWith('{')) {
+            parts.push(data);
           }
         }
       }
