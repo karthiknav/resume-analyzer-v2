@@ -10,7 +10,7 @@ import type {
   S3ObjectInfo,
 } from './types';
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://px2hu5bt7h.execute-api.us-east-1.amazonaws.com/prod/api';
+const API_BASE = import.meta.env.VITE_API_BASE ?? '/api';
 
 async function request<T>(
   path: string,

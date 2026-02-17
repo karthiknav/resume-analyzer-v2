@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Resume Analyzer Agents - Strands AgentCore Implementation Deployment Script
-# Order: roles -> storage (with PLACEHOLDER) -> deploy_agent -> storage (update with Agent ARN) -> deploy_api_lambda -> api stack -> deploy trigger Lambda
+# Order: roles -> storage -> deploy_agent -> storage (update Agent ARN) -> deploy_api_lambda -> api stack -> ui stack -> deploy_ui -> trigger Lambda
+# Optional: set ACM_CERTIFICATE_ARN for custom domain (noonehasthisdomain.click)
 set -e
 
 ENVIRONMENT="agentcore"
@@ -67,7 +68,9 @@ echo ""
 echo "🤖 Step 3: Deploying AgentCore agent..."
 export ENVIRONMENT=$ENVIRONMENT
 export AWS_DEFAULT_REGION=$REGION
-python deploy_agent.py
+if [ ! -f ".agent_arn" ]; then
+  python deploy_agent.py
+fi
 
 if [ -f ".agent_arn" ]; then
   AGENT_ARN=$(cat .agent_arn)
@@ -113,8 +116,26 @@ aws cloudformation deploy \
 echo "✅ API stack deployed"
 echo ""
 
-# Step 7: Deploy trigger Lambda function code
-echo "📦 Step 7: Deploying trigger Lambda function code..."
+# Step 7: Deploy UI stack (S3 + CloudFront) and build/upload UI
+echo "🌐 Step 7: Deploying UI stack (S3 + CloudFront)..."
+UI_STACK_NAME="${STACK_NAME}-ui"
+ACM_CERT_ARN=${ACM_CERTIFICATE_ARN:-arn:aws:acm:us-east-1:206409480438:certificate/afcd4fe3-a737-47ac-8128-e21fcb09052f}
+aws cloudformation deploy \
+    --template-file template-infrastructure-ui.yaml \
+    --stack-name $UI_STACK_NAME \
+    --parameter-overrides \
+        Environment=$ENVIRONMENT \
+        AcmCertificateArn=$ACM_CERT_ARN \
+        DomainName=noonehasthisdomain.click \
+    --region $REGION
+echo "✅ UI stack deployed"
+
+echo "📦 Building and uploading UI to S3..."
+python deploy_ui.py
+echo ""
+
+# Step 8: Deploy trigger Lambda function code
+echo "📦 Step 8: Deploying trigger Lambda function code..."
 python deploy_lambda.py
 echo ""
 
