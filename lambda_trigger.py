@@ -194,12 +194,13 @@ def handle_root_jd_upload(bucket, original_key):
     
     job_table.put_item(Item={
         'jobDescriptionId': so_id,
+        'summary': jd_data.get('summary', 'N/A'),
         'title': jd_data.get('title', 'N/A'),
         'client': jd_data.get('client', 'N/A'),
         'keywords': jd_data.get('keywords', []),
         's3Key': jd_json_key,
         'createdAt': datetime.utcnow().isoformat(),
-        'status': 'ACTIVE'
+        'status': 'In Progress'
     })
     
     return {'statusCode': 200, 'body': json.dumps(f'Created opportunity {so_id}')}

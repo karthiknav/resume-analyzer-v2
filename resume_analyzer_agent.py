@@ -262,14 +262,15 @@ async def process_jd_only(bucket: str, job_description_key: str):
             system_prompt="""You are a Job Analyzer Agent specializing in extracting job requirements.
 
 Analyze and extract:
-1. title: A suitable job title (e.g., "DevOps Engineer", "Data Scientist", "Solution Architect")
-2. client: Client/company name if mentioned
-3. keywords: List of key technical skills and technologies (e.g., ["AWS", "Python", "Kubernetes"])
-4. required_qualifications: Education, experience, skills, certifications
-5. preferred_qualifications: Additional beneficial skills
-6. skills: Technical, domain, soft skills with proficiency levels
-7. company_culture: Environment, values, work style
-8. compensation_benefits: Salary range and benefits if provided
+1. summary: A very brief summary (1-2 lines) highlighting the key points of the job description
+2. title: A suitable job title (e.g., "DevOps Engineer", "Data Scientist", "Solution Architect")
+3. client: Client/company name if mentioned
+4. keywords: List of top 5-6 key technical skills and technologies (e.g., ["AWS", "Python", "Kubernetes"])
+5. required_qualifications: Education, experience, skills, certifications
+6. preferred_qualifications: Additional beneficial skills
+7. skills: Technical, domain, soft skills with proficiency levels
+8. company_culture: Environment, values, work style
+9. compensation_benefits: Salary range and benefits if provided
 
 Return ONLY a valid JSON object with these fields."""
         )
@@ -388,7 +389,7 @@ def create_supervisor_agent():
             system_prompt="""You are a Resume Parser Agent specializing in extracting structured information from resumes.
 
 Extract the following information:
-1. Personal Information (name, contact, title, URLs)
+1. Personal Information (name, contact, title, URLs, experiencePeriod)
 2. Work Experience (companies, titles, dates, achievements, technologies)
 3. Education (degrees, institutions, dates, coursework)
 4. Skills (technical, domain, soft skills, languages, proficiency)

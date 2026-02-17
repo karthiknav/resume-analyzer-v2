@@ -4,14 +4,14 @@ agents:
     name: resume_analyzer_agent
     language: python
     node_version: null
-    entrypoint: C:/Users/Administrator/Documents/GitHub/resume-analyzer-agent/resume_analyzer_agent.py
+    entrypoint: C:/Users/Administrator/Documents/GitHub/resume-analyzer-v2/resume_analyzer_agent.py
     deployment_type: container
     runtime_type: null
     platform: linux/arm64
     container_runtime: none
     source_path: null
     aws:
-      execution_role: arn:aws:iam::206409480438:role/ResumeAnalyzerAgentCoreRole-agentcore
+      execution_role: arn:aws:iam::206409480438:role/ResumeAnalyzerv2AgentCoreRole-agentcore
       execution_role_auto_create: false
       account: '206409480438'
       region: us-east-1
