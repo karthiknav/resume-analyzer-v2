@@ -196,7 +196,7 @@ def handle_candidates_upload(bucket, original_key, parts, so_id):
         CopySource={'Bucket': bucket, 'Key': original_key},
         Key=new_key
     )
-    s3_client.delete_object(Bucket=bucket, Key=original_key)
+    #s3_client.delete_object(Bucket=bucket, Key=original_key)
 
     # Ensure job analysis exists (prefer jd.json, else raw JD file)
     jd_prefix = f"opportunities/{so_id}/jd/"
@@ -215,13 +215,12 @@ def handle_candidates_upload(bucket, original_key, parts, so_id):
         "resume_key": new_key,
         "job_analysis_key": job_analysis_key,
     }
-    agentcore_client.invoke_agent_runtime(
+    boto3_response = agentcore_client.invoke_agent_runtime(
         agentRuntimeArn=AGENT_ARN,
         qualifier="DEFAULT",
-        runtimeSessionId=f"resume-{so_id}-{candidate_id}",
         payload=json.dumps(payload)
     )
-
+    time.sleep(60)
     # 4. Wait for analysis.json and update DynamoDB
     analysis_s3_key = f"opportunities/{so_id}/candidates/{candidate_id}/analysis.json"
     max_retries = 30
@@ -315,7 +314,7 @@ if __name__ == "__main__":
         'Records': [{
             's3': {
                 'bucket': {'name': 'amzn-s3-resume-analyzer-v2-bucket-agentcore-206409480438'},
-                'object': {'key': 'opportunities/SO_000005/candidates/sample_resume.pdf'}
+                'object': {'key': 'opportunities/SO_000005/candidates/sample_resume_arjun_mehta.pdf'}
             }
         }]
     }
