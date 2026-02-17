@@ -44,6 +44,8 @@ End-to-end flow from uploading a job opportunity through resume analysis and fol
                          │         ▼
                          │  POST /chat ──► Bedrock AgentCore ──► reply
                          │
+                         │  select / reject candidate ──► close the opportunity
+                         │
                          └────────────► back to Opportunities
 ```
 
