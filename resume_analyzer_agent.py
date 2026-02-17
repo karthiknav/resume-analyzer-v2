@@ -16,7 +16,7 @@ from strands.hooks import AgentInitializedEvent, HookProvider, HookRegistry, Mes
 # Import memory management modules
 from bedrock_agentcore_starter_toolkit.operations.memory.manager import MemoryManager
 from bedrock_agentcore.memory.constants import ConversationalMessage, MessageRole
-from bedrock_agentcore.memory.session import MemorySession, MemorySessionManager
+from bedrock_agentcore.memory.session import MemorySession, MemorySessionManager, Actor
 
 # Define message role constants
 USER = MessageRole.USER
@@ -85,10 +85,6 @@ except Exception as e:
 # Initialize the session memory manager
 session_manager = MemorySessionManager(memory_id=memory.id, region_name=REGION)
 
-# Global session tracking
-current_session = None
-current_session_id = None
-
 logger.info(f"✅ Session manager initialized for memory: {memory.id}")
 
 class MemoryHookProvider(HookProvider):
@@ -155,41 +151,61 @@ def get_or_create_session(
     job_description_key: str = None,
     job_description_id: str = None,
     candidate_id: str = None,
-):
-    """Get existing session or create new one. Uses jobDescriptionId and candidateId when provided."""
-    global current_session, current_session_id
-
+) -> MemorySession | None:
+    """Get existing session or create new one. Uses jobDescriptionId and candidateId when provided.
+    Checks for existing session before creating; no global session state."""
     if job_description_id and candidate_id:
         session_id = hashlib.md5(f"{job_description_id}_{candidate_id}".encode()).hexdigest()[:16]
     elif resume_key:
         session_data = f"{resume_key}_{job_description_key or 'no_job'}"
         session_id = hashlib.md5(session_data.encode()).hexdigest()[:16]
     else:
-        return current_session
+        return None
 
-    if session_id != current_session_id:
+    actor = Actor(actor_id=ACTOR_ID, session_manager=session_manager)
+    existing = actor.list_sessions()
+    def _sid(s):
+        if isinstance(s, dict):
+            return s.get("sessionId") or s.get("session_id")
+        return getattr(s, "sessionId", None) or getattr(s, "session_id", None)
+
+    has_session = any(_sid(s) == session_id for s in existing)
+
+    if has_session:
+        current_session = MemorySession(
+            memory_id=session_manager._memory_id,
+            actor_id=ACTOR_ID,
+            session_id=session_id,
+            manager=session_manager,
+        )
+        logger.info(f"✅ Reusing existing session: {session_id}")
+    else:
         current_session = session_manager.create_memory_session(
             actor_id=ACTOR_ID,
             session_id=session_id
         )
-        current_session_id = session_id
         logger.info(f"✅ Created new session: {session_id}")
 
     return current_session
 
-async def process_query_with_strands_agents(query: str):
-    """Process plain text queries using Strands agents with memory context"""
+async def process_query_with_strands_agents(
+    query: str,
+    job_description_id: str = None,
+    candidate_id: str = None,
+):
+    """Process plain text queries using Strands agents with memory context.
+    Pass job_description_id and candidate_id for session continuity."""
     try:
-        session = get_or_create_session()
-        memory_hook_provider = MemoryHookProvider(session)
-        
+        session = get_or_create_session(job_description_id=job_description_id, candidate_id=candidate_id)
+        hooks = [MemoryHookProvider(session)] if session else []
+
         agent = Agent(
             model=MODEL_ID,
             system_prompt="""You are an expert HR resume analyzer with access to previous conversations 
             about specific resume and job combinations. Use context to provide relevant responses.""",
-            hooks=[memory_hook_provider]
+            hooks=hooks
         )
-        
+
         return agent.stream_async(query)
         
     except Exception as e:
@@ -212,7 +228,11 @@ async def invoke(payload):
         if 'query' in payload or 'message' in payload:
             query = payload.get('query') or payload.get('message', '')
             logger.info(f"💬 Processing follow-up query: {query}")
-            agent_stream = await process_query_with_strands_agents(query)
+            agent_stream = await process_query_with_strands_agents(
+                query,
+                job_description_id=payload.get('job_description_id'),
+                candidate_id=payload.get('candidate_id'),
+            )
         # JD-only analysis (no resume)
         elif job_description_key and not resume_key:
             logger.info("📋 Processing JD-only analysis")
@@ -226,16 +246,12 @@ async def invoke(payload):
             logger.info("🔄 Starting resume processing with Strands agents")
             job_description_id = payload.get('job_description_id')
             candidate_id = payload.get('candidate_id')
-            get_or_create_session(
-                resume_key=resume_key,
-                job_description_key=job_description_key,
-                job_description_id=job_description_id,
-                candidate_id=candidate_id,
-            )
             agent_stream = await process_resume_with_strands_agents(
                 bucket, resume_key,
                 job_description_key=job_description_key,
                 job_analysis_key=job_analysis_key,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
             )
         
         tool_name = None
@@ -343,6 +359,8 @@ async def process_resume_with_strands_agents(
     resume_key: str,
     job_description_key: str = None,
     job_analysis_key: str = None,
+    job_description_id: str = None,
+    candidate_id: str = None,
 ) -> Dict[str, Any]:
     """Process resume using Strands multi-agent collaboration.
     Job is always analyzed first; we download the job analysis JSON from job_analysis_key
@@ -372,7 +390,12 @@ async def process_resume_with_strands_agents(
             job_content = "No specific job description provided."
         
         logger.info("🤖 Creating HR Supervisor agent")
-        supervisor_agent = create_supervisor_agent()
+        supervisor_agent = create_supervisor_agent(
+            resume_key=resume_key,
+            job_description_key=job_description_key,
+            job_description_id=job_description_id,
+            candidate_id=candidate_id,
+        )
         logger.info("✅ HR Supervisor agent created successfully")
         
         evaluation_request = f"""
@@ -405,12 +428,22 @@ async def process_resume_with_strands_agents(
         logger.error(f"🔍 Error details: {type(e).__name__}")
         raise
 
-def create_supervisor_agent():
+def create_supervisor_agent(
+    resume_key: str = None,
+    job_description_key: str = None,
+    job_description_id: str = None,
+    candidate_id: str = None,
+):
     """Create the HR Supervisor agent with specialized tools.
     Job analysis is always provided in the request; the analyze_job_requirements tool is not used.
     """
-    session = get_or_create_session()
-    memory_hook_provider = MemoryHookProvider(session)
+    session = get_or_create_session(
+        resume_key=resume_key,
+        job_description_key=job_description_key,
+        job_description_id=job_description_id,
+        candidate_id=candidate_id,
+    )
+    hooks = [MemoryHookProvider(session)] if session else []
     
     @tool
     def extract_resume_info(resume_text: str) -> str:
@@ -497,7 +530,7 @@ Structure your response as a JSON object with numerical rating and analysis."""
     # Create the main HR Supervisor Agent (job analysis is always provided in the request)
     supervisor_agent = Agent(
         model=MODEL_ID,
-        hooks= [memory_hook_provider],
+        hooks=hooks,
         tools=[
             extract_resume_info,
             evaluate_candidate_fit,
