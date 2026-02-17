@@ -188,7 +188,7 @@ async def process_query_with_strands_agents(query: str):
         logger.error(f"❌ Error in query processing: {str(e)}")
         raise
 
-#@app.entrypoint
+@app.entrypoint
 async def invoke(payload):
     """AgentCore entrypoint for HR resume evaluation"""
     try:
@@ -705,21 +705,21 @@ if __name__ == "__main__":
     #     print(f"Document processing result: {response1[:200]}...")
     
     # asyncio.run(test())
-    async def test():
-        # First call with document payload to create session
-        document_payload = {
-            "bucket": "amzn-s3-resume-analyzer-v2-bucket-agentcore-206409480438",
-            "resume_key": "opportunities/SO_000005/candidates/sample_resume_arjun_mehta.pdf",
-            "job_analysis_key": "opportunities/SO_000005/jd/jd.json"
-        }
+    # async def test():
+    #     # First call with document payload to create session
+    #     document_payload = {
+    #         "bucket": "amzn-s3-resume-analyzer-v2-bucket-agentcore-206409480438",
+    #         "resume_key": "opportunities/SO_000005/candidates/sample_resume_arjun_mehta.pdf",
+    #         "job_analysis_key": "opportunities/SO_000005/jd/jd.json"
+    #     }
         
-        print("=== First call: Processing documents ===")
-        response1 = ""
-        async for chunk in invoke(document_payload):
-            response1 += str(chunk)
-        print(f"Document processing result: {response1[:200]}...")
+    #     print("=== First call: Processing documents ===")
+    #     response1 = ""
+    #     async for chunk in invoke(document_payload):
+    #         response1 += str(chunk)
+    #     print(f"Document processing result: {response1[:200]}...")
     
-    asyncio.run(test())
-    # app.run()
+    # asyncio.run(test())
+    app.run()
 
 
