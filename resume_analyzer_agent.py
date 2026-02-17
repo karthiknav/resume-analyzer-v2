@@ -241,30 +241,17 @@ async def invoke(payload):
                         collected_data.append(chunk)
                     yield chunk
 
-            # Resume flow: parse final JSON and upload to S3 (same folder structure as process_jd_only)
+            # Resume flow: parse final JSON and upload to S3 (same pattern as process_jd_only)
             if resume_key and bucket and collected_data:
                 full_text = "".join(str(c) for c in collected_data)
                 try:
-                    if "```json" in full_text:
-                        json_text = full_text.split("```json")[1].split("```")[0].strip()
-                    elif "```" in full_text:
-                        json_text = full_text.split("```")[1].split("```")[0].strip()
-                    else:
-                        json_text = full_text.strip()
-                    analysis_json = json.loads(json_text)
-                    analysis_body = json.dumps(analysis_json, ensure_ascii=False, indent=2)
+                    analysis_json = parse_json_from_text(full_text)
                     resume_folder = "/".join(resume_key.split("/")[:-1])
                     resume_stem = Path(resume_key).stem
                     analysis_s3_key = f"{resume_folder}/{resume_stem}.json"
-                    logger.info(f"💾 Saving resume analysis to s3://{bucket}/{analysis_s3_key}")
-                    s3_client.put_object(
-                        Bucket=bucket,
-                        Key=analysis_s3_key,
-                        Body=analysis_body,
-                        ContentType="application/json",
-                    )
-                    logger.info("✅ Resume analysis JSON saved successfully")
-                    yield f"\n\n{json.dumps({'status': 'success', 'message': 'Resume analysis saved to S3', 's3_key': analysis_s3_key})}"
+                    upload_analysis_to_s3(bucket, analysis_s3_key, analysis_json)
+                    status_msg = json.dumps({"status": "success", "message": "Resume analysis saved to S3", "s3_key": analysis_s3_key})
+                    yield f"\n\n{status_msg}"
                 except Exception as up:
                     logger.warning(f"⚠️ Could not parse or upload resume analysis JSON: {up}")
                     
@@ -317,32 +304,18 @@ Return ONLY a valid JSON object with these fields."""
         
         logger.info(f"📝 Extracted text (first 200 chars): {jd_text[:200]}")
         
-        # Extract JSON from markdown code blocks if present
-        if '```json' in jd_text:
-            jd_text = jd_text.split('```json')[1].split('```')[0].strip()
-        elif '```' in jd_text:
-            jd_text = jd_text.split('```')[1].split('```')[0].strip()
-        
-        logger.info(f"📝 Cleaned text (first 200 chars): {jd_text[:200]}")
-        
-        jd_json = json.loads(jd_text)
-        jd_analysis = json.dumps(jd_json, ensure_ascii=False)
-        
-        # Extract folder path from job_description_key (e.g., opportunities/SO-12345/jd/job.txt)
-        jd_folder = '/'.join(job_description_key.split('/')[:-1])  # Gets "opportunities/SO-12345/jd"
+        jd_json = parse_json_from_text(jd_text)
+        jd_folder = '/'.join(job_description_key.split('/')[:-1])
         s3_key = f"{jd_folder}/jd.json"
         
-        logger.info(f"💾 Saving JD analysis to s3://{bucket}/{s3_key}")
-        s3_client.put_object(
-            Bucket=bucket,
-            Key=s3_key,
-            Body=jd_analysis,
-            ContentType='application/json'
-        )
-        logger.info(f"✅ JD analysis saved successfully")
+        upload_analysis_to_s3(bucket, s3_key, jd_json)
+        logger.info("✅ JD analysis saved successfully")
+        
+        # Yield same event format as resume flow so invoke() handles both consistently
+        status_msg = json.dumps({"status": "success", "message": "JD analysis completed", "s3_key": s3_key})
         
         async def stream_result():
-            yield json.dumps({"status": "success", "message": "JD analysis completed", "s3_key": s3_key})
+            yield {"data": status_msg}
         
         return stream_result()
         
@@ -682,6 +655,30 @@ def download_s3_file(bucket: str, key: str) -> str:
     except Exception as e:
         logger.error(f"Error downloading/reading S3 file {bucket}/{key}: {str(e)}")
         raise
+
+
+def parse_json_from_text(text: str) -> dict:
+    """Extract and parse JSON from agent output (handles ```json code blocks)."""
+    if "```json" in text:
+        json_text = text.split("```json")[1].split("```")[0].strip()
+    elif "```" in text:
+        json_text = text.split("```")[1].split("```")[0].strip()
+    else:
+        json_text = text.strip()
+    return json.loads(json_text)
+
+
+def upload_analysis_to_s3(bucket: str, s3_key: str, analysis_json: dict) -> None:
+    """Upload analysis JSON to S3."""
+    body = json.dumps(analysis_json, ensure_ascii=False, indent=2)
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=s3_key,
+        Body=body,
+        ContentType="application/json",
+    )
+    logger.info(f"💾 Saved analysis to s3://{bucket}/{s3_key}")
+
 
 def extract_name_from_key(s3_key: str) -> str:
     """Extract candidate name from S3 key"""
