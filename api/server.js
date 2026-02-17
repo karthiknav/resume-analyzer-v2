@@ -182,7 +182,7 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
       opportunityId: id,
       opportunityTitle: item.title ? `${item.title} — ${item.client || ''}` : id,
       jd,
-      candidates: item.candidates ?? MOCK_ANALYSIS.candidates,
+      candidates: item.candidate != null ? [item.candidate] : (item.candidates ?? MOCK_ANALYSIS.candidates),
       coreSkills: item.coreSkills ?? MOCK_ANALYSIS.coreSkills,
       domainSkills: item.domainSkills ?? MOCK_ANALYSIS.domainSkills,
       evidenceSnippets: item.evidenceSnippets ?? MOCK_ANALYSIS.evidenceSnippets,

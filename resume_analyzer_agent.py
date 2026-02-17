@@ -353,14 +353,14 @@ async def process_resume_with_strands_agents(bucket: str, resume_key: str, job_d
         JOB DESCRIPTION:
         {job_content}
 
-        Work with your team to provide a comprehensive evaluation. Coordinate with:
-        1. ResumeParserAgent to extract structured information
-        2. JobAnalyzerAgent to analyze job requirements
-        3. ResumeEvaluatorAgent to evaluate candidate fit
-        4. GapIdentifierAgent to identify missing qualifications
-        5. CandidateRaterAgent to provide numerical rating
+        Work with your team to:
+        1. ResumeParserAgent: extract structured information (name, experience, skills)
+        2. JobAnalyzerAgent: analyze job requirements
+        3. ResumeEvaluatorAgent: evaluate candidate fit
+        4. GapIdentifierAgent: identify missing qualifications
+        5. CandidateRaterAgent: provide numerical rating (use 0-100 scale for scores)
 
-        Provide your final response as a comprehensive markdown format.
+        Your final response MUST be a single JSON object in a ```json ... ``` block, matching the exact structure defined in your system prompt (candidate, coreSkills, domainSkills, evidenceSnippets, gaps, recommendation). No other text or markdown outside the JSON block.
         """
         
         # Execute evaluation
@@ -497,60 +497,64 @@ Structure your response as a JSON object with numerical rating and analysis."""
 
 Coordinate with your specialized team to provide comprehensive candidate evaluations:
 
-1. Have ResumeParserAgent extract structured information from the resume
+1. Have ResumeParserAgent extract structured information from the resume (name, experience, skills)
 2. Have JobAnalyzerAgent analyze the job requirements
 3. Have ResumeEvaluatorAgent evaluate candidate fit
 4. Have GapIdentifierAgent identify missing qualifications
-5. Have CandidateRaterAgent provide numerical rating (1-5 scale)
+5. Have CandidateRaterAgent provide numerical rating (convert 1-5 scale to 0-100 for overallScore, coreScore, domainScore, softScore)
 
-CRITICAL: Output your final evaluation in this EXACT Markdown format:
+CRITICAL: Your final output MUST be a single valid JSON object only (no markdown, no extra text). Wrap it in a ```json code block. The JSON must match this exact structure so the UI can map all fields correctly. There is always exactly one candidate per analysis.
 
-### Candidate Fit Summary
+{
+  "candidate": {
+    "id": "unique_candidate_id",
+    "name": "Full Name from resume",
+    "level": "Senior | Mid | Junior",
+    "experienceYears": number,
+    "overallScore": number 0-100,
+    "coreScore": number 0-100,
+    "domainScore": number 0-100,
+    "softScore": number 0-100,
+    "initials": "XX (first letters of first and last name)"
+  },
+  "coreSkills": [
+    {
+      "name": "Skill name",
+      "years": "X yrs",
+      "level": "Expert | Strong | Basic",
+      "status": "pass | partial | fail"
+    }
+  ],
+  "domainSkills": [
+    {
+      "skill": "Domain skill name",
+      "priority": "High | Medium | Low",
+      "level": "Expert | Strong | Basic",
+      "evidence": "Short evidence from resume"
+    }
+  ],
+  "evidenceSnippets": [
+    "Quote or snippet 1 from resume",
+    "Quote or snippet 2",
+    "Quote or snippet 3"
+  ],
+  "gaps": [
+    "Gap or risk 1",
+    "Gap or risk 2"
+  ],
+  "recommendation": "One or two paragraph recommendation: whether to proceed, key strengths, areas to probe in interview."
+}
 
-| Suitability | Decision | Seniority | Match Summary | Red Flags | Availability |
-|---:|:--:|:--:|:--|:--|:--|
-| **{score}%** | **{decision}** | **{seniority}** | Core: **{coreMatch}** • Domain: **{domainMatch}** • Soft: **{softMatch}** | {redFlagsOrDash} | {availability} |
+Rules:
+- candidate: single object for the evaluated candidate. Use id from resume (e.g. hash of name) or generate a short unique id.
+- coreSkills: 4-8 items. status must be exactly "pass", "partial", or "fail".
+- domainSkills: 3-6 items. priority must be "High", "Medium", or "Low". level must be "Expert", "Strong", or "Basic".
+- evidenceSnippets: 3-6 strings, direct quotes or paraphrased evidence from the resume.
+- gaps: 2-5 strings, specific gaps or risks.
+- recommendation: single string, one or two paragraphs.
+- All scores (overallScore, coreScore, domainScore, softScore) must be numbers 0-100. Convert from 1-5 scale if needed: 5->90-100, 4->75-89, 3->60-74, 2->40-59, 1->0-39.
 
-> _Why this score:_ {oneLineRationale}
-
----
-
-#### Must‑Haves
-| Must‑Have | Status | Evidence |
-|---|:--:|---|
-{mustHaveRows}
-
----
-
-#### Core Skills (Top 6)
-| Skill | JD Priority | Candidate Level | Evidence |
-|---|:--:|:--:|---|
-{coreSkillRows}
-
----
-
-#### Domain / Functional (Top 4)
-| Domain Skill | JD Priority | Candidate Level | Evidence |
-|---|:--:|:--:|---|
-{domainSkillRows}
-
----
-
-#### Evidence Snippets
-- {evidence1}
-- {evidence2}
-- {evidence3}
-- {evidence4}
-
----
-
-#### Gaps & Risks
-- {gap1}
-- {gap2}
-- {risk1}
-
-**Recommendation:** {oneLineRecommendation}
-""")
+Output ONLY the JSON object inside a ```json ... ``` block."""
     
     return supervisor_agent
 
