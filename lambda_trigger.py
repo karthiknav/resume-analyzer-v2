@@ -214,6 +214,8 @@ def handle_candidates_upload(bucket, original_key, parts, so_id):
         "bucket": bucket,
         "resume_key": new_key,
         "job_analysis_key": job_analysis_key,
+        "job_description_id": so_id,
+        "candidate_id": candidate_id,
     }
     boto3_response = agentcore_client.invoke_agent_runtime(
         agentRuntimeArn=AGENT_ARN,

@@ -182,7 +182,7 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
       summary: jobItem?.summary ?? jobItem?.jd?.summary ?? MOCK_ANALYSIS.jd.summary ?? '',
     };
     const opportunityTitle = jobItem?.title
-      ? `${jobItem.title}${jobItem.client ? ` — ${jobItem.client}` : ''}`
+      ? `${jobItem.title}${jobItem.client && jobItem.client !== 'N/A' ? ` — ${jobItem.client}` : ''}`
       : id;
 
     // 2. Query ranked candidates from CandidateAnalysis
@@ -243,6 +243,7 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
           domainScore: c.domainScore ?? 0,
           softScore: c.softScore ?? 0,
           initials: c.initials ?? (c.name ?? row.candidateName ?? '?').slice(0, 2).toUpperCase(),
+          ...(c.location && { location: c.location }),
           coreSkills: analysis?.coreSkills ?? [],
           domainSkills: analysis?.domainSkills ?? [],
           evidenceSnippets: analysis?.evidenceSnippets ?? [],

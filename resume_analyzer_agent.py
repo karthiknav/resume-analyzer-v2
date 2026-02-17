@@ -54,7 +54,7 @@ try:
         name=memory_name,
         strategies=[],  # No strategies for short-term memory
         description="Short-term memory for resume analyzer",
-        event_expiry_days=7,  # Retention period for short-term memory
+        event_expiry_days=30,  # Retention period for short-term memory
         memory_execution_role_arn=None,  # Optional for short-term memory
     )
     memory_id = memory.id
@@ -150,23 +150,31 @@ class MemoryHookProvider(HookProvider):
         registry.add_callback(AgentInitializedEvent, self.on_agent_initialized)
         logger.info("✅ Memory hooks registered with MemorySession")
 
-def get_or_create_session(resume_key: str = None, job_description_key: str = None):
-    """Get existing session or create new one based on documents"""
+def get_or_create_session(
+    resume_key: str = None,
+    job_description_key: str = None,
+    job_description_id: str = None,
+    candidate_id: str = None,
+):
+    """Get existing session or create new one. Uses jobDescriptionId and candidateId when provided."""
     global current_session, current_session_id
-    
-    if resume_key:
-        # New document upload - create new session
+
+    if job_description_id and candidate_id:
+        session_id = hashlib.md5(f"{job_description_id}_{candidate_id}".encode()).hexdigest()[:16]
+    elif resume_key:
         session_data = f"{resume_key}_{job_description_key or 'no_job'}"
         session_id = hashlib.md5(session_data.encode()).hexdigest()[:16]
-        
-        if session_id != current_session_id:
-            current_session = session_manager.create_memory_session(
-                actor_id=ACTOR_ID,
-                session_id=session_id
-            )
-            current_session_id = session_id
-            logger.info(f"✅ Created new session: {session_id}")
-    
+    else:
+        return current_session
+
+    if session_id != current_session_id:
+        current_session = session_manager.create_memory_session(
+            actor_id=ACTOR_ID,
+            session_id=session_id
+        )
+        current_session_id = session_id
+        logger.info(f"✅ Created new session: {session_id}")
+
     return current_session
 
 async def process_query_with_strands_agents(query: str):
@@ -216,7 +224,14 @@ async def invoke(payload):
                 raise ValueError("resume_key is required in payload")
             
             logger.info("🔄 Starting resume processing with Strands agents")
-            get_or_create_session(resume_key, job_description_key)
+            job_description_id = payload.get('job_description_id')
+            candidate_id = payload.get('candidate_id')
+            get_or_create_session(
+                resume_key=resume_key,
+                job_description_key=job_description_key,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+            )
             agent_stream = await process_resume_with_strands_agents(
                 bucket, resume_key,
                 job_description_key=job_description_key,

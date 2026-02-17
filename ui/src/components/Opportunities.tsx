@@ -232,7 +232,7 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
               {filtered.map((row) => (
                 <tr
                   key={row.id}
-                  onClick={() => onOpenAnalysis(row.id, `${row.title} — ${row.client}`)}
+                  onClick={() => onOpenAnalysis(row.id, row.client && row.client !== 'N/A' ? `${row.title} — ${row.client}` : row.title)}
                 >
                   <td>
                     <div className="opp-title">{row.title}</div>
@@ -264,7 +264,7 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
                       className="action-link"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onOpenAnalysis(row.id, `${row.title} — ${row.client}`);
+                        onOpenAnalysis(row.id, row.client && row.client !== 'N/A' ? `${row.title} — ${row.client}` : row.title);
                       }}
                     >
                       View →

@@ -38,6 +38,7 @@ export interface Candidate {
   domainScore: number;
   softScore: number;
   initials: string;
+  location?: string;
   /** Per-candidate analysis from S3 (analysis.json) */
   coreSkills?: CoreSkill[];
   domainSkills?: DomainSkill[];

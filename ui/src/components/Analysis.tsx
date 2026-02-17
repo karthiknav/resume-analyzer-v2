@@ -207,7 +207,9 @@ export function Analysis({
                     <div className="profile-meta">
                       <span className="profile-meta-item">🎯 {cand.level}</span>
                       <span className="profile-meta-item">📅 {cand.experienceYears} yrs experience</span>
-                      <span className="profile-meta-item">📍 —</span>
+                      {cand.location && (
+                        <span className="profile-meta-item">📍 {cand.location}</span>
+                      )}
                     </div>
                   </div>
                   <div className="overall-score">
