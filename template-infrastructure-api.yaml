@@ -100,7 +100,7 @@ Resources:
       ResponseParameters:
         gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
         gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,PATCH,OPTIONS'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
 
   ApiGatewayGatewayResponse5xx:
     Type: AWS::ApiGateway::GatewayResponse
@@ -110,7 +110,7 @@ Resources:
       ResponseParameters:
         gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
         gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,PATCH,OPTIONS'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
 
   # CORS for ACCESS_DENIED (403 Missing Authentication Token)
   ApiGatewayGatewayResponseAccessDenied:
@@ -121,7 +121,7 @@ Resources:
       ResponseParameters:
         gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
         gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,PATCH,OPTIONS'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
 
   ApiGatewayResourceProxy:
     Type: AWS::ApiGateway::Resource
@@ -142,7 +142,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambdaFunction.Arn}/invocations'
 
-  # OPTIONS (CORS preflight) on {proxy+} — return 200 + CORS headers without invoking Lambda
+  # OPTIONS (CORS preflight) — respond with CORS headers without invoking Lambda
   ApiGatewayMethodProxyOptions:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -165,7 +165,7 @@ Resources:
             ResponseParameters:
               integration.response.header.Access-Control-Allow-Origin: "'*'"
               integration.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-              integration.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,PATCH,OPTIONS'"
+              integration.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
             ResponseTemplates:
               application/json: ''
 
@@ -181,7 +181,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambdaFunction.Arn}/invocations'
 
-  # OPTIONS (CORS preflight) on root — e.g. preflight for /prod
+  # OPTIONS on root (e.g. preflight for /prod)
   ApiGatewayMethodRootOptions:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -204,7 +204,7 @@ Resources:
             ResponseParameters:
               integration.response.header.Access-Control-Allow-Origin: "'*'"
               integration.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-              integration.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,PATCH,OPTIONS'"
+              integration.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
             ResponseTemplates:
               application/json: ''
 

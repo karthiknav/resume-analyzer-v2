@@ -5,6 +5,9 @@
 # Optional: set ACM_CERTIFICATE_ARN for custom domain (noonehasthisdomain.click)
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(dirname "$SCRIPT_DIR")"
+
 ENVIRONMENT="agentcore"
 STACK_NAME="resume-analyzer-agents-strands-${ENVIRONMENT}"
 REGION=${AWS_DEFAULT_REGION:-us-east-1}
@@ -68,12 +71,12 @@ echo ""
 echo "🤖 Step 3: Deploying AgentCore agent..."
 export ENVIRONMENT=$ENVIRONMENT
 export AWS_DEFAULT_REGION=$REGION
-if [ ! -f ".agent_arn" ]; then
-  python deploy_agent.py
+if [ ! -f "$ROOT/.agent_arn" ]; then
+  python "$SCRIPT_DIR/deploy_agent.py"
 fi
 
-if [ -f ".agent_arn" ]; then
-  AGENT_ARN=$(cat .agent_arn)
+if [ -f "$ROOT/.agent_arn" ]; then
+  AGENT_ARN=$(cat "$ROOT/.agent_arn")
   echo "  Agent ARN: $AGENT_ARN"
 else
   echo "⚠️  Warning: .agent_arn not found. Using PLACEHOLDER for base/API stacks."

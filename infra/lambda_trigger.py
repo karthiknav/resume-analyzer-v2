@@ -91,13 +91,22 @@ def handle_candidates_upload(bucket, original_key, parts, so_id):
     )
     s3_client.delete_object(Bucket=bucket, Key=original_key)
 
-    # Ensure job analysis exists (prefer jd.json, else raw JD file)
+    # Wait for jd.json (or any JD file) to exist — agent may still be uploading after JD was created
     jd_prefix = f"opportunities/{so_id}/jd/"
-    jd_response = s3_client.list_objects_v2(Bucket=bucket, Prefix=jd_prefix)
-    jd_keys = [o['Key'] for o in jd_response.get('Contents', []) if not o['Key'].endswith('/')] if 'Contents' in jd_response else []
-
     jd_json_key = f"opportunities/{so_id}/jd/jd.json"
-    job_analysis_key = jd_json_key if jd_json_key in jd_keys else (jd_keys[0] if jd_keys else None)
+    job_analysis_key = None
+    max_jd_retries = 60
+    for i in range(max_jd_retries):
+        jd_response = s3_client.list_objects_v2(Bucket=bucket, Prefix=jd_prefix)
+        jd_keys = [o['Key'] for o in jd_response.get('Contents', []) if not o['Key'].endswith('/')] if 'Contents' in jd_response else []
+        if jd_json_key in jd_keys:
+            job_analysis_key = jd_json_key
+            break
+        if jd_keys:
+            job_analysis_key = jd_keys[0]
+            break
+        if i < max_jd_retries - 1:
+            time.sleep(2)
 
     if not job_analysis_key:
         return {'statusCode': 200, 'body': 'No job description found - upload JD first'}
@@ -115,10 +124,9 @@ def handle_candidates_upload(bucket, original_key, parts, so_id):
         qualifier="DEFAULT",
         payload=json.dumps(payload)
     )
-    time.sleep(60)
     # 4. Wait for analysis.json and update DynamoDB
     analysis_s3_key = f"opportunities/{so_id}/candidates/{candidate_id}/analysis.json"
-    max_retries = 30
+    max_retries = 50
     status = 'PROCESSING'
     for i in range(max_retries):
         try:
@@ -140,6 +148,19 @@ def handle_candidates_upload(bucket, original_key, parts, so_id):
         'createdAt': datetime.utcnow().isoformat(),
         'updatedAt': datetime.utcnow().isoformat()
     })
+
+    # If this is the first candidate for this job, update job opportunity status to "In Progress"
+    cand_response = candidate_table.query(
+        KeyConditionExpression='jobDescriptionId = :jid',
+        ExpressionAttributeValues={':jid': so_id}
+    )
+    if cand_response.get('Count', 0) == 1:
+        job_table.update_item(
+            Key={'jobDescriptionId': so_id},
+            UpdateExpression='SET #st = :status, updatedAt = :now',
+            ExpressionAttributeNames={'#st': 'status'},
+            ExpressionAttributeValues={':status': 'In Progress', ':now': datetime.utcnow().isoformat()}
+        )
 
     return {'statusCode': 200, 'body': json.dumps(f'Candidate {candidate_id} processed for {so_id}')}
 
@@ -173,21 +194,25 @@ def handle_root_jd_upload(bucket, original_key):
         payload=json.dumps(payload)
     )
     
-    # Wait for jd.json to be created
+    # Wait for jd.json to be created (agent uploads it after processing the JD)
     jd_json_key = f"opportunities/{so_id}/jd/jd.json"
-    max_retries = 10
+    max_retries = 60
+    jd_data = None
     for i in range(max_retries):
         try:
             jd_data = json.loads(s3_client.get_object(Bucket=bucket, Key=jd_json_key)['Body'].read())
             break
         except ClientError as e:
+            print(e.response)
             if e.response.get('Error', {}).get('Code') != 'NoSuchKey':
                 raise
             if i < max_retries - 1:
                 time.sleep(2)
             else:
-                raise
-    
+                # Agent may still be writing; use defaults and do not throw
+                print(f'[lambda] jd.json not found after {max_retries} retries; writing placeholder to DynamoDB')
+                jd_data = {'summary': 'Pending', 'title': 'N/A', 'client': 'N/A', 'keywords': []}
+
     job_table.put_item(Item={
         'jobDescriptionId': so_id,
         'summary': jd_data.get('summary', 'N/A'),
@@ -196,9 +221,9 @@ def handle_root_jd_upload(bucket, original_key):
         'keywords': jd_data.get('keywords', []),
         's3Key': jd_json_key,
         'createdAt': datetime.utcnow().isoformat(),
-        'status': 'In Progress'
+        'status': 'New'
     })
-    
+
     return {'statusCode': 200, 'body': json.dumps(f'Created opportunity {so_id}')}
 
 if __name__ == "__main__":

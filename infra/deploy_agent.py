@@ -2,8 +2,14 @@
 """Deploy Resume Analyzer Agent to Bedrock AgentCore Runtime"""
 
 import os
+from pathlib import Path
+
 import boto3
 from bedrock_agentcore_starter_toolkit import Runtime
+
+# Project root: infra/ is one level down, so parents[1] = repo root
+ROOT = Path(__file__).resolve().parents[1]
+AGENTS_DIR = ROOT / "agents"
 
 def get_stack_output(stack_name: str, output_key: str, region: str) -> str:
     """Get CloudFormation stack output value"""
@@ -35,15 +41,18 @@ def main():
     
     # Set environment variable for agent
     os.environ['DOCUMENTS_BUCKET'] = documents_bucket
-    
-    # Configure AgentCore
+
+    # Run from project root so agents/ and requirements.txt resolve
+    os.chdir(ROOT)
+
+    # Configure AgentCore (entrypoint under agents/ folder)
     print("🔧 Configuring AgentCore...")
     agentcore_runtime = Runtime()
     response = agentcore_runtime.configure(
-        entrypoint="resume_analyzer_agent.py",
+        entrypoint=str(AGENTS_DIR / "resume_analyzer_agent.py"),
         execution_role=execution_role,
         auto_create_ecr=True,
-        requirements_file="requirements.txt",
+        requirements_file=str(ROOT / "requirements.txt"),
         region=region,
         agent_name="resume_analyzer_agent"
     )

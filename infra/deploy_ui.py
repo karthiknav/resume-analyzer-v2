@@ -10,6 +10,9 @@ import shutil
 import boto3
 from pathlib import Path
 
+# Script is in infra/; ui/ is at repo root (sibling of infra/)
+ROOT = Path(__file__).resolve().parents[1]
+
 def get_api_gateway_url(region: str, stack_name: str) -> str:
     """Get ApiGatewayUrl output from API stack."""
     cfn = boto3.client("cloudformation", region_name=region)
@@ -53,7 +56,7 @@ def deploy():
     bucket_name = get_ui_bucket_name(region, ui_stack_name)
     print(f"🪣 UI bucket: {bucket_name}")
 
-    ui_dir = Path(__file__).parent / "ui"
+    ui_dir = ROOT / "ui"
     if not ui_dir.exists():
         print("❌ ui/ directory not found")
         sys.exit(1)

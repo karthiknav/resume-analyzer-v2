@@ -4,7 +4,7 @@ agents:
     name: resume_analyzer_agent
     language: python
     node_version: null
-    entrypoint: C:/Users/Administrator/Documents/GitHub/v2/resume-analyzer-agent-v2/resume_analyzer_agent.py
+    entrypoint: C:/Users/Administrator/Documents/GitHub/v2/resume-analyzer-agent-v2/agents/resume_analyzer_agent.py
     deployment_type: container
     runtime_type: null
     platform: linux/arm64
@@ -30,8 +30,8 @@ agents:
         idle_runtime_session_timeout: null
         max_lifetime: null
     bedrock_agentcore:
-      agent_id: resume_analyzer_agent-j2SNsc9Nf9
-      agent_arn: arn:aws:bedrock-agentcore:us-east-1:206409480438:runtime/resume_analyzer_agent-j2SNsc9Nf9
+      agent_id: resume_analyzer_agent-mBBJut9c5W
+      agent_arn: arn:aws:bedrock-agentcore:us-east-1:206409480438:runtime/resume_analyzer_agent-mBBJut9c5W
       agent_session_id: null
     codebuild:
       project_name: bedrock-agentcore-resume_analyzer_agent-builder

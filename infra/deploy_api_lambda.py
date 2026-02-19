@@ -11,9 +11,12 @@ import subprocess
 import boto3
 from pathlib import Path
 
+# Script is in infra/; api/ is at repo root (sibling of infra/)
+ROOT = Path(__file__).resolve().parents[1]
+
 def create_api_zip():
     """Create ZIP of api/ with node_modules."""
-    api_dir = Path(__file__).parent / "api"
+    api_dir = ROOT / "api"
     if not api_dir.exists():
         print("❌ api/ directory not found")
         sys.exit(1)

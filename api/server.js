@@ -11,7 +11,7 @@ import crypto from 'crypto';
 import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand, GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, ScanCommand, GetCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand } from '@aws-sdk/client-bedrock-agentcore';
 
 const app = express();
@@ -140,7 +140,7 @@ app.get('/api/opportunities', async (req, res) => {
     const rawItems = result.Items || [];
     console.log(`[opportunities] Fetched ${rawItems.length} item(s) from ${OPPORTUNITIES_TABLE}`);
     if (rawItems.length === 0) {
-      console.log('[opportunities] Table empty — returning MOCK_OPPORTUNITIES fallback');
+      console.log('[opportunities] Table empty — returning empty list');
     }
     const items = await Promise.all(rawItems.map(async (item) => {
       const jobId = item.jobDescriptionId ?? item.id ?? item.opportunityId;
@@ -159,7 +159,10 @@ app.get('/api/opportunities', async (req, res) => {
         }
       }
       const rawStatus = (item.status ?? 'new').toString();
-      const status = rawStatus.toLowerCase();
+      const statusLower = rawStatus.toLowerCase().replace(/\s+/g, '_');
+      // Map DynamoDB status to UI filter keys: new, progress, closed, active
+      const statusMap = { in_progress: 'progress', completed: 'closed', active: 'active', new: 'new', closed: 'closed' };
+      const status = statusMap[statusLower] ?? statusLower || 'new';
       const keywords = item.keywords;
       const keywordsDisplay = Array.isArray(keywords)
         ? keywords.join(', ')
@@ -174,15 +177,13 @@ app.get('/api/opportunities', async (req, res) => {
         client: item.client ?? 'N/A',
         keywords: keywordsDisplay,
         s3Key: item.s3Key,
-        status: status === 'active' ? 'active' : (status || 'new'),
+        status,
         candidatesCount,
         topScore: item.topScore != null ? Number(item.topScore) : null,
         created: createdStr,
       };
     }));
-    const response = items.length ? items : MOCK_OPPORTUNITIES;
-    if (!items.length) console.log('[opportunities] Returning MOCK_OPPORTUNITIES due to empty items');
-    res.json(response);
+    res.json(items);
   } catch (err) {
     console.error('[opportunities] DynamoDB scan error:', err);
     console.log('[opportunities] Falling back to MOCK_OPPORTUNITIES');
@@ -263,6 +264,7 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
             evidenceSnippets: [],
             gaps: [],
             recommendation: '',
+            status: (row.status || '').toUpperCase(),
           });
           continue;
         }
@@ -299,6 +301,7 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
           evidenceSnippets: analysis?.evidenceSnippets ?? [],
           gaps: analysis?.gaps ?? [],
           recommendation: analysis?.recommendation ?? '',
+          status: (row.status || '').toUpperCase(),
         };
         candidates.push(mapped);
       }
@@ -311,7 +314,7 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
       opportunityId: id,
       opportunityTitle,
       jd,
-      candidates: candidates.length ? candidates : (jobItem?.candidates ?? MOCK_ANALYSIS.candidates),
+      candidates: CANDIDATE_TABLE ? candidates : (jobItem?.candidates ?? MOCK_ANALYSIS.candidates),
       coreSkills: [],  // Per-candidate; use selected candidate's
       domainSkills: [],
       evidenceSnippets: [],
@@ -323,6 +326,36 @@ app.get('/api/opportunities/:id/analysis', async (req, res) => {
     console.error('[analysis] Error:', err);
     console.log(`[analysis] Falling back to MOCK_ANALYSIS for jobDescriptionId=${id}`);
     res.json({ ...MOCK_ANALYSIS, opportunityId: id, opportunityTitle: `Opportunity ${id}` });
+  }
+});
+
+// ——— PATCH /api/opportunities/:id/candidates/:candidateId/select ———
+// Set candidate status to SELECTED in CandidateAnalysis table.
+app.patch('/api/opportunities/:id/candidates/:candidateId/select', async (req, res) => {
+  const { id: jobDescriptionId, candidateId } = req.params;
+  if (!jobDescriptionId || !candidateId) {
+    return res.status(400).json({ message: 'jobDescriptionId and candidateId are required' });
+  }
+  try {
+    if (!CANDIDATE_TABLE) {
+      return res.status(503).json({ message: 'Candidate table not configured' });
+    }
+    const now = new Date().toISOString();
+    await dynamo.send(new UpdateCommand({
+      TableName: CANDIDATE_TABLE,
+      Key: { jobDescriptionId, candidateId },
+      UpdateExpression: 'SET #st = :status, updatedAt = :now',
+      ConditionExpression: 'attribute_exists(jobDescriptionId) AND attribute_exists(candidateId)',
+      ExpressionAttributeNames: { '#st': 'status' },
+      ExpressionAttributeValues: { ':status': 'SELECTED', ':now': now },
+    }));
+    res.json({ success: true, status: 'SELECTED' });
+  } catch (err) {
+    if (err.name === 'ConditionalCheckFailedException') {
+      return res.status(404).json({ message: 'Candidate not found' });
+    }
+    console.error('[select-candidate] Error:', err);
+    res.status(500).json({ message: err.message || 'Failed to update candidate status' });
   }
 });
 
