@@ -163,9 +163,9 @@ Resources:
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
-              integration.response.header.Access-Control-Allow-Origin: "'*'"
-              integration.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-              integration.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'*'"
             ResponseTemplates:
               application/json: ''
               
@@ -203,9 +203,9 @@ Resources:
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
-              integration.response.header.Access-Control-Allow-Origin: "'*'"
-              integration.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
-              integration.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
             ResponseTemplates:
               application/json: ''
               
