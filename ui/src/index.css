@@ -142,6 +142,10 @@ body {
   animation: pulse 2s infinite;
 }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 
 .page { padding: 28px 32px; }
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
@@ -220,9 +224,9 @@ tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; transition: 
 tbody tr:hover { background: #F8FAFF; }
 tbody tr:last-child { border-bottom: none; }
 tbody td { padding: 16px 24px; font-size: 14px; }
-.opp-title { font-weight: 600; color: var(--text-primary); }
+.opp-title { font-weight: 600; color: var(--text-primary); min-width: 0; }
 .opp-title:hover { color: var(--accent-primary); }
-.opp-client { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+.opp-client { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .opp-meta { color: var(--text-secondary); font-size: 13px; }
 .candidates-count { font-family: var(--font-mono); font-size: 13px; font-weight: 500; }
 .action-link {
@@ -249,9 +253,17 @@ tbody td { padding: 16px 24px; font-size: 14px; }
 .card-header h3 { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
 .card-body { padding: 16px 20px; }
 
-/* Ranked candidates: real table */
+/* Ranked candidates: contain table so it doesn't overflow the left panel */
+.card-body.ranked-candidates-list {
+  overflow-x: auto;
+  overflow-y: visible;
+  min-width: 0;
+  padding: 0;
+}
 .ranked-candidates-list .candidates-table {
   width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -266,10 +278,25 @@ tbody td { padding: 16px 24px; font-size: 14px; }
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border);
 }
+.ranked-candidates-list .candidates-table thead th.col-score {
+  text-align: right;
+  padding-right: 10px;
+}
 .ranked-candidates-list .candidates-table .col-rank { width: 36px; text-align: center; }
 .ranked-candidates-list .candidates-table .col-name { min-width: 0; }
-.ranked-candidates-list .candidates-table .col-level { width: 72px; font-size: 11px; }
-.ranked-candidates-list .candidates-table .col-score { width: 58px; text-align: right; }
+.ranked-candidates-list .candidates-table .col-level { min-width: 0; font-size: 11px; }
+.ranked-candidates-list .candidates-table .col-score {
+  width: 70px;
+  min-width: 70px;
+  text-align: right;
+  overflow: hidden;
+  padding-right: 10px;
+}
+.ranked-candidates-list .candidates-table tbody td.col-score {
+  overflow: hidden;
+  text-align: right;
+  vertical-align: middle;
+}
 .ranked-candidates-list .candidates-table tbody tr {
   cursor: pointer;
   transition: background 0.12s;
@@ -303,13 +330,20 @@ tbody td { padding: 16px 24px; font-size: 14px; }
 .ranked-candidates-list .candidate-score {
   text-align: right;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  display: inline-block;
+  max-width: 100%;
 }
 .ranked-candidates-list .score-value {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   font-family: var(--font-mono);
   display: block;
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ranked-candidates-list .score-breakdown {
   font-size: 9px;
@@ -317,6 +351,8 @@ tbody td { padding: 16px 24px; font-size: 14px; }
   font-family: var(--font-mono);
   display: block;
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .jd-tag {

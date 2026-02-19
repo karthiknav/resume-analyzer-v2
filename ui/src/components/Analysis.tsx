@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { getAnalysis, sendChat } from '../api/client';
 import type { AnalysisDetail as AnalysisDetailType, Candidate } from '../api/types';
 import { UploadResume } from './UploadResume';
@@ -24,6 +24,11 @@ export function Analysis({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Candidate | null>(null);
+  const [, setRefreshing] = useState(false);
+  /** When set, a resume is being processed; show "in progress" row and optional right-panel placeholder */
+  const [pendingResumeFileName, setPendingResumeFileName] = useState<string | null>(null);
+  /** Candidate ids when we entered pending state; used by Analysis-page polling to detect new candidate */
+  const candidateIdsWhenPendingRef = useRef<string[]>([]);
   const [chatMessages, setChatMessages] = useState<
     Array<{ role: 'user' | 'agent'; text: string }>
   >([
@@ -34,6 +39,31 @@ export function Analysis({
   ]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+
+  const refreshAnalysis = async (): Promise<AnalysisDetailType | null> => {
+    setRefreshing(true);
+    try {
+      const res = await getAnalysis(opportunityId);
+      setData(res);
+      // If we had a selected candidate, try to keep it selected
+      if (selected) {
+        const updatedCandidate = res.candidates?.find(c => c.id === selected.id);
+        if (updatedCandidate) {
+          setSelected(updatedCandidate);
+        } else if (res.candidates?.length) {
+          setSelected(res.candidates[0]);
+        }
+      } else if (res.candidates?.length) {
+        setSelected(res.candidates[0]);
+      }
+      return res;
+    } catch (e) {
+      console.error('Failed to refresh analysis:', e);
+      return null;
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -56,12 +86,33 @@ export function Analysis({
     return () => { cancelled = true; };
   }, [opportunityId]);
 
+  // Poll for new candidate when a resume is in progress (ref is set in onProcessingStart; do not overwrite here)
+  useEffect(() => {
+    if (!pendingResumeFileName || !data) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await getAnalysis(opportunityId);
+        const existingIds = candidateIdsWhenPendingRef.current;
+        const newCandidate = res.candidates?.find(c => !existingIds.includes(c.id));
+        if (newCandidate) {
+          setData(res);
+          setPendingResumeFileName(null);
+          setSelected(newCandidate);
+        }
+      } catch {
+        // ignore
+      }
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [opportunityId, pendingResumeFileName]);
+
+  const PENDING_CANDIDATE_ID = 'pending-resume';
   const handleSendChat = async () => {
     const msg = chatInput.trim();
     if (!msg) return;
     const candidateId = (selected ?? data?.candidates?.[0])?.id;
-    if (!candidateId) {
-      setChatMessages((prev) => [...prev, { role: 'user', text: msg }, { role: 'agent', text: 'Please select a candidate to ask questions about.' }]);
+    if (!candidateId || candidateId === PENDING_CANDIDATE_ID) {
+      setChatMessages((prev) => [...prev, { role: 'user', text: msg }, { role: 'agent', text: candidateId === PENDING_CANDIDATE_ID ? 'Please wait for the resume analysis to complete before asking questions.' : 'Please select a candidate to ask questions about.' }]);
       setChatInput('');
       return;
     }
@@ -101,14 +152,35 @@ export function Analysis({
     );
   }
 
-  const cand = selected ?? data.candidates?.[0];
+  const realCandidates = data.candidates ?? [];
+  const hasPendingResume = !!pendingResumeFileName;
+  const displayCandidates: Array<Candidate & { _pending?: boolean }> = hasPendingResume
+    ? [
+        {
+          id: PENDING_CANDIDATE_ID,
+          name: pendingResumeFileName.replace(/\.[^/.]+$/, ''),
+          level: '',
+          experienceYears: 0,
+          overallScore: 0,
+          coreScore: 0,
+          domainScore: 0,
+          softScore: 0,
+          initials: '…',
+          _pending: true,
+        } as Candidate & { _pending?: boolean },
+        ...realCandidates,
+      ]
+    : realCandidates;
+
+  const cand = selected ?? (displayCandidates.length ? displayCandidates[0] : null);
+  const isPendingSelected = cand?.id === PENDING_CANDIDATE_ID;
   const jd = data.jd ?? { tags: [], summary: '' };
-  // Use selected candidate's analysis from S3; fallback to legacy data
-  const coreSkills = cand?.coreSkills ?? data.coreSkills ?? [];
-  const domainSkills = cand?.domainSkills ?? data.domainSkills ?? [];
-  const evidenceSnippets = cand?.evidenceSnippets ?? data.evidenceSnippets ?? [];
-  const gaps = cand?.gaps ?? data.gaps ?? [];
-  const recommendation = cand?.recommendation ?? data.recommendation ?? '';
+  // Use selected candidate's analysis from S3; fallback to legacy data (skip for pending)
+  const coreSkills = isPendingSelected ? [] : (cand?.coreSkills ?? data.coreSkills ?? []);
+  const domainSkills = isPendingSelected ? [] : (cand?.domainSkills ?? data.domainSkills ?? []);
+  const evidenceSnippets = isPendingSelected ? [] : (cand?.evidenceSnippets ?? data.evidenceSnippets ?? []);
+  const gaps = isPendingSelected ? [] : (cand?.gaps ?? data.gaps ?? []);
+  const recommendation = isPendingSelected ? '' : (cand?.recommendation ?? data.recommendation ?? '');
 
   return (
     <div className="page">
@@ -150,7 +222,8 @@ export function Analysis({
             <div className="card-header">
               <h3>👥 Ranked Candidates</h3>
               <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                {data.candidates?.length ?? 0} analyzed
+                {realCandidates.length} analyzed
+                {hasPendingResume ? ' + 1 in progress' : ''}
               </span>
             </div>
             <div className="card-body ranked-candidates-list" style={{ padding: 0 }}>
@@ -164,47 +237,113 @@ export function Analysis({
                   </tr>
                 </thead>
                 <tbody>
-                  {data.candidates?.map((c, i) => (
-                    <tr
-                      key={c.id}
-                      className={cand?.id === c.id ? 'active' : ''}
-                      onClick={() => setSelected(c)}
-                    >
-                      <td className="col-rank">
-                        <span className={`candidate-rank rank-${Math.min(i + 1, 4)}`}>
-                          {i + 1}
-                        </span>
-                      </td>
-                      <td className="col-name">
-                        <span className="candidate-name">{c.name}</span>
-                      </td>
-                      <td className="col-level">
-                        <span className="candidate-level">
-                          {c.level} • {c.experienceYears} yrs
-                        </span>
-                      </td>
-                      <td className="col-score">
-                        <div className="candidate-score">
-                          <span className={`score-value ${ScoreClass(c.overallScore)}`}>
-                            {c.overallScore}%
+                  {displayCandidates.map((c, i) => {
+                    const isPending = (c as Candidate & { _pending?: boolean })._pending === true;
+                    return (
+                      <tr
+                        key={c.id}
+                        className={cand?.id === c.id ? 'active' : ''}
+                        onClick={() => setSelected(c)}
+                        style={isPending ? { opacity: 0.85 } : undefined}
+                      >
+                        <td className="col-rank">
+                          {isPending ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26 }}>
+                              <span style={{ width: 14, height: 14, border: '2px solid var(--text-tertiary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
+                            </span>
+                          ) : (
+                            <span className={`candidate-rank rank-${Math.min(i + 1, 4)}`}>
+                              {i + 1}
+                            </span>
+                          )}
+                        </td>
+                        <td className="col-name">
+                          <span className="candidate-name">
+                            {isPending ? (
+                              <>
+                                {c.name}
+                                <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 500 }}>(Analyzing…)</span>
+                              </>
+                            ) : (
+                              c.name
+                            )}
                           </span>
-                          <span className="score-breakdown">
-                            {c.coreScore}/{c.domainScore}/{c.softScore}
+                        </td>
+                        <td className="col-level">
+                          <span className="candidate-level">
+                            {isPending ? '—' : `${c.level} • ${c.experienceYears} yrs`}
                           </span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="col-score">
+                          {isPending ? (
+                            <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>—</span>
+                          ) : (
+                            <div className="candidate-score">
+                              <span className={`score-value ${ScoreClass(c.overallScore)}`}>
+                                {c.overallScore}%
+                              </span>
+                              <span className="score-breakdown">
+                                {c.coreScore}/{c.domainScore}/{c.softScore}
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
 
-          <UploadResume opportunityId={opportunityId} candidateId={selected?.id} />
+          <UploadResume 
+            opportunityId={opportunityId} 
+            candidateId={selected?.id === PENDING_CANDIDATE_ID ? undefined : selected?.id}
+            existingCandidateIds={data?.candidates?.map(c => c.id) || []}
+            onProcessingStart={(fileName) => {
+              candidateIdsWhenPendingRef.current = data?.candidates?.map(c => c.id) ?? [];
+              setPendingResumeFileName(fileName);
+              setSelected({
+                id: PENDING_CANDIDATE_ID,
+                name: fileName.replace(/\.[^/.]+$/, ''),
+                level: '',
+                experienceYears: 0,
+                overallScore: 0,
+                coreScore: 0,
+                domainScore: 0,
+                softScore: 0,
+                initials: '…',
+              });
+            }}
+            onProcessingEnd={() => {
+              // Do NOT clear pending state here (e.g. on timeout). Only clear when we
+              // actually get the new candidate, so Analysis polling keeps running.
+            }}
+            onCandidateReady={(candidate) => {
+              setPendingResumeFileName(null);
+              setSelected(candidate);
+              refreshAnalysis().then((res) => {
+                if (res) {
+                  const updated = res.candidates?.find(c => c.id === candidate.id);
+                  if (updated) setSelected(updated);
+                }
+              });
+            }}
+          />
         </div>
 
         <div className="right-panel">
-          {cand && (
+          {isPendingSelected ? (
+            <div className="card" style={{ padding: 32, textAlign: 'center' }}>
+              <div style={{ fontSize: 40, marginBottom: 16 }}>
+                <span style={{ display: 'inline-block', width: 40, height: 40, border: '3px solid var(--text-tertiary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+              </div>
+              <h3 style={{ fontSize: 16, marginBottom: 8, color: 'var(--text-primary)' }}>Analysis in progress</h3>
+              <p style={{ fontSize: 13, color: 'var(--text-tertiary)', margin: 0 }}>
+                Resume is being analyzed. Name, level, and score will appear here when ready.
+              </p>
+            </div>
+          ) : cand ? (
             <>
               <div className="card">
                 <div className="profile-header">
@@ -360,7 +499,7 @@ export function Analysis({
                 </div>
               </div>
             </>
-          )}
+          ) : null}
 
           <div className="card">
             <div className="card-header">

@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { listOpportunities, getUploadJdUrl, uploadToS3 } from '../api/client';
 import type { Opportunity as OppType } from '../api/types';
+import { usePolling } from '../hooks/usePolling';
 
 const JD_ACCEPT = '.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const MAX_JD_SIZE_MB = 10;
@@ -53,7 +54,11 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('all');
   const [uploadingJd, setUploadingJd] = useState(false);
-  const [jdMessage, setJdMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [processingJd, setProcessingJd] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [jdMessage, setJdMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [pendingOpportunity, setPendingOpportunity] = useState<OppType | null>(null);
+  const [opportunityCountBeforeUpload, setOpportunityCountBeforeUpload] = useState<number>(0);
 
   const refreshList = () => {
     listOpportunities()
@@ -92,31 +97,107 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
       return;
     }
     setUploadingJd(true);
+    setProcessingJd(false);
     setJdMessage(null);
+    setPendingOpportunity(null);
+    setUploadedFileName(file.name);
+    // Store current count to detect new opportunities
+    setOpportunityCountBeforeUpload(opportunities.length);
+    
     try {
+      // Step 1: Upload to S3
       const { uploadUrl, key } = await getUploadJdUrl(file.name, file.type);
       await uploadToS3(uploadUrl, file);
+      
+      // Step 2: Show processing state
+      setUploadingJd(false);
+      setProcessingJd(true);
       setJdMessage({
-        type: 'success',
-        text: `Job description uploaded to S3 (${key}). Your trigger will process it.`,
+        type: 'info',
+        text: `File uploaded successfully. Processing job description...`,
       });
+      
+      // Add a temporary pending opportunity to the list
+      const tempOpp: OppType = {
+        id: `pending-${Date.now()}`,
+        title: file.name.replace(/\.[^/.]+$/, ''),
+        client: 'Processing...',
+        status: 'progress',
+        candidatesCount: 0,
+        created: new Date().toLocaleDateString(),
+      };
+      setPendingOpportunity(tempOpp);
+      
+      // Refresh list immediately to see if it's already processed
       refreshList();
     } catch (e) {
+      setUploadingJd(false);
+      setProcessingJd(false);
       setJdMessage({
         type: 'error',
         text: e instanceof Error ? e.message : 'Upload failed',
       });
-    } finally {
-      setUploadingJd(false);
+      setPendingOpportunity(null);
     }
   };
 
+  // Poll for new opportunity after upload
+  usePolling({
+    enabled: processingJd,
+    checkFn: async () => {
+      const currentList = await listOpportunities();
+      // Check if a new opportunity appeared (count increased or new one matches filename)
+      const hasNewOpportunity = currentList.length > opportunityCountBeforeUpload || 
+        currentList.some(
+          (opp) => opp.id !== pendingOpportunity?.id && 
+          uploadedFileName && 
+          (opp.title.toLowerCase().includes(uploadedFileName.toLowerCase().replace(/\.[^/.]+$/, '')) ||
+           opp.s3Key?.includes(uploadedFileName))
+        );
+      
+      if (hasNewOpportunity) {
+        setOpportunities(currentList);
+        return true;
+      }
+      return false;
+    },
+    interval: 2000,
+    maxAttempts: 30, // 60 seconds max
+    onSuccess: () => {
+      setProcessingJd(false);
+      setPendingOpportunity(null);
+      setJdMessage({
+        type: 'success',
+        text: 'Job description processed successfully!',
+      });
+      // Clear message after 3 seconds
+      setTimeout(() => setJdMessage(null), 3000);
+    },
+    onTimeout: () => {
+      setProcessingJd(false);
+      setJdMessage({
+        type: 'info',
+        text: 'Processing is taking longer than expected. The opportunity will appear when ready.',
+      });
+      // Keep polling in background but don't show processing state
+      setTimeout(() => {
+        refreshList();
+        setPendingOpportunity(null);
+      }, 5000);
+    },
+  });
+
+  // Merge pending opportunity with actual opportunities
+  const allOpportunities = pendingOpportunity 
+    ? [pendingOpportunity, ...opportunities.filter(o => o.id !== pendingOpportunity.id)]
+    : opportunities;
+  
   const filtered =
     filter === 'all'
-      ? opportunities
+      ? allOpportunities
       : filter === 'new'
-        ? opportunities.filter((o) => o.status === 'new' || o.status === 'active')
-        : opportunities.filter((o) => o.status === filter);
+        ? allOpportunities.filter((o) => o.status === 'new' || o.status === 'active')
+        : allOpportunities.filter((o) => o.status === filter);
 
   const stats = {
     total: opportunities.length,
@@ -162,10 +243,29 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
             marginBottom: 16,
             padding: 12,
             borderRadius: 8,
-            background: jdMessage.type === 'success' ? '#ECFDF5' : '#FEE2E2',
-            color: jdMessage.type === 'success' ? '#059669' : '#DC2626',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            background: 
+              jdMessage.type === 'success' ? '#ECFDF5' : 
+              jdMessage.type === 'info' ? '#EFF6FF' : 
+              '#FEE2E2',
+            color: 
+              jdMessage.type === 'success' ? '#059669' : 
+              jdMessage.type === 'info' ? '#1E40AF' : 
+              '#DC2626',
           }}
         >
+          {processingJd && (
+            <div className="spinner" style={{ 
+              width: 16, 
+              height: 16, 
+              border: '2px solid currentColor',
+              borderTopColor: 'transparent',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite',
+            }} />
+          )}
           {jdMessage.text}
         </div>
       )}
@@ -229,49 +329,72 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row) => (
-                <tr
-                  key={row.id}
-                  onClick={() => onOpenAnalysis(row.id, row.client && row.client !== 'N/A' ? `${row.title} — ${row.client}` : row.title)}
-                >
-                  <td>
-                    <div className="opp-title">{row.title}</div>
-                    <div className="opp-client">{row.keywords ?? '—'}</div>
-                  </td>
-                  <td className="opp-meta">{row.client}</td>
-                  <td>
-                    <Badge status={row.status} />
-                  </td>
-                  <td>
-                    <span className="candidates-count">{row.candidatesCount}</span>
-                  </td>
-                  <td>
-                    <span
-                      className={`candidates-count ${
-                        (row.topScore ?? 0) >= 80
-                          ? 'score-high'
-                          : (row.topScore ?? 0) >= 60
-                            ? 'score-medium'
-                            : ''
-                      }`}
-                    >
-                      {row.topScore != null ? `${row.topScore}%` : '—'}
-                    </span>
-                  </td>
-                  <td className="opp-meta opp-created">{row.created}</td>
-                  <td>
-                    <span
-                      className="action-link"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenAnalysis(row.id, row.client && row.client !== 'N/A' ? `${row.title} — ${row.client}` : row.title);
-                      }}
-                    >
-                      View →
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((row) => {
+                const isPending = row.id === pendingOpportunity?.id;
+                return (
+                  <tr
+                    key={row.id}
+                    onClick={() => !isPending && onOpenAnalysis(row.id, row.client && row.client !== 'N/A' ? `${row.title} — ${row.client}` : row.title)}
+                    style={isPending ? { opacity: 0.7, cursor: 'not-allowed' } : {}}
+                  >
+                    <td style={{ overflow: 'hidden' }}>
+                      <div className="opp-title" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                        {isPending && (
+                          <div className="spinner" style={{ 
+                            width: 12, 
+                            height: 12, 
+                            flexShrink: 0,
+                            border: '2px solid var(--text-tertiary)',
+                            borderTopColor: 'transparent',
+                            borderRadius: '50%',
+                            animation: 'spin 0.8s linear infinite',
+                          }} />
+                        )}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                          {row.title}
+                        </span>
+                      </div>
+                      <div className="opp-client">{row.keywords ?? '—'}</div>
+                    </td>
+                    <td className="opp-meta">{row.client}</td>
+                    <td>
+                      <Badge status={row.status} />
+                    </td>
+                    <td>
+                      <span className="candidates-count">{row.candidatesCount}</span>
+                    </td>
+                    <td>
+                      <span
+                        className={`candidates-count ${
+                          (row.topScore ?? 0) >= 80
+                            ? 'score-high'
+                            : (row.topScore ?? 0) >= 60
+                              ? 'score-medium'
+                              : ''
+                        }`}
+                      >
+                        {row.topScore != null ? `${row.topScore}%` : '—'}
+                      </span>
+                    </td>
+                    <td className="opp-meta opp-created">{row.created}</td>
+                    <td>
+                      {isPending ? (
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>Processing...</span>
+                      ) : (
+                        <span
+                          className="action-link"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenAnalysis(row.id, row.client && row.client !== 'N/A' ? `${row.title} — ${row.client}` : row.title);
+                          }}
+                        >
+                          View →
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
