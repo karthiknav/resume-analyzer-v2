@@ -162,7 +162,7 @@ app.get('/api/opportunities', async (req, res) => {
       const statusLower = rawStatus.toLowerCase().replace(/\s+/g, '_');
       // Map DynamoDB status to UI filter keys: new, progress, closed, active
       const statusMap = { in_progress: 'progress', completed: 'closed', active: 'active', new: 'new', closed: 'closed' };
-      const status = statusMap[statusLower] ?? statusLower || 'new';
+      const status = (statusMap[statusLower] != null) ? statusMap[statusLower] : (statusLower || 'new');
       const keywords = item.keywords;
       const keywordsDisplay = Array.isArray(keywords)
         ? keywords.join(', ')
