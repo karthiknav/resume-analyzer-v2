@@ -41,6 +41,8 @@ export function Analysis({
   const [chatLoading, setChatLoading] = useState(false);
   const [selectingCandidateId, setSelectingCandidateId] = useState<string | null>(null);
   const [selectError, setSelectError] = useState<string | null>(null);
+  /** When set, we keep re-fetching analysis until this candidate has non-zero scores (handles API/S3 delay). */
+  const [refiningForCandidateId, setRefiningForCandidateId] = useState<string | null>(null);
 
   const refreshAnalysis = async (): Promise<AnalysisDetailType | null> => {
     setRefreshing(true);
@@ -100,6 +102,7 @@ export function Analysis({
           setData(res);
           setPendingResumeFileName(null);
           setSelected(newCandidate);
+          if ((newCandidate.overallScore ?? 0) === 0) setRefiningForCandidateId(newCandidate.id);
         }
       } catch {
         // ignore
@@ -107,6 +110,30 @@ export function Analysis({
     }, 2500);
     return () => clearInterval(interval);
   }, [opportunityId, pendingResumeFileName]);
+
+  // After a new candidate is found, re-fetch analysis until scores are populated (API/S3 can lag)
+  useEffect(() => {
+    if (!refiningForCandidateId) return;
+    let attempts = 0;
+    const maxAttempts = 10;
+    const interval = setInterval(async () => {
+      attempts += 1;
+      try {
+        const res = await getAnalysis(opportunityId);
+        setData(res);
+        const cand = res.candidates?.find(c => c.id === refiningForCandidateId);
+        if (cand) {
+          setSelected(cand);
+          if ((cand.overallScore ?? 0) > 0 || attempts >= maxAttempts) setRefiningForCandidateId(null);
+        } else {
+          setRefiningForCandidateId(null);
+        }
+      } catch {
+        if (attempts >= maxAttempts) setRefiningForCandidateId(null);
+      }
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [opportunityId, refiningForCandidateId]);
 
   const PENDING_CANDIDATE_ID = 'pending-resume';
   const selectedCandidate = data?.candidates?.find(c => (c.status || '').toUpperCase() === 'SELECTED');
@@ -208,13 +235,24 @@ export function Analysis({
           <h2>{opportunityTitle}</h2>
           <p className="page-header-subtitle">JD Analysis & Candidate Matching</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button type="button" className="btn btn-outline" onClick={onBack}>
             ← Back
           </button>
-          <button type="button" className="btn btn-primary">
-            📄 Export Report
-          </button>
+          {cand && cand.id !== PENDING_CANDIDATE_ID && (
+            (cand.status || '').toUpperCase() === 'SELECTED' ? (
+              <span className="candidate-selected-badge">Selected</span>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSelectCandidate}
+                disabled={!!selectingCandidateId}
+              >
+                {selectingCandidateId === cand.id ? 'Selecting…' : 'Select'}
+              </button>
+            )
+          )}
         </div>
       </div>
 
@@ -357,7 +395,10 @@ export function Analysis({
               refreshAnalysis().then((res) => {
                 if (res) {
                   const updated = res.candidates?.find(c => c.id === candidate.id);
-                  if (updated) setSelected(updated);
+                  if (updated) {
+                    setSelected(updated);
+                    if ((updated.overallScore ?? 0) === 0) setRefiningForCandidateId(updated.id);
+                  }
                 }
               });
             }}
@@ -390,23 +431,9 @@ export function Analysis({
                       )}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    {(cand.status || '').toUpperCase() === 'SELECTED' ? (
-                      <span className="candidate-selected-badge">Selected</span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={handleSelectCandidate}
-                        disabled={!!selectingCandidateId}
-                      >
-                        {selectingCandidateId === cand.id ? 'Selecting…' : 'Select'}
-                      </button>
-                    )}
-                    <div className="overall-score">
-                      <div className="overall-score-value">{cand.overallScore}%</div>
-                      <div className="overall-score-label">Overall Match</div>
-                    </div>
+                  <div className="overall-score">
+                    <div className="overall-score-value">{cand.overallScore}%</div>
+                    <div className="overall-score-label">Overall Match</div>
                   </div>
                 </div>
                 <div className="score-bars">
