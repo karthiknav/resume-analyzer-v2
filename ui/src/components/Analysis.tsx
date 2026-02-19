@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { getAnalysis, sendChat } from '../api/client';
+import { getAnalysis, sendChat, selectCandidate } from '../api/client';
 import type { AnalysisDetail as AnalysisDetailType, Candidate } from '../api/types';
 import { UploadResume } from './UploadResume';
 
@@ -39,6 +39,8 @@ export function Analysis({
   ]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [selectingCandidateId, setSelectingCandidateId] = useState<string | null>(null);
+  const [selectError, setSelectError] = useState<string | null>(null);
 
   const refreshAnalysis = async (): Promise<AnalysisDetailType | null> => {
     setRefreshing(true);
@@ -107,6 +109,23 @@ export function Analysis({
   }, [opportunityId, pendingResumeFileName]);
 
   const PENDING_CANDIDATE_ID = 'pending-resume';
+  const selectedCandidate = data?.candidates?.find(c => (c.status || '').toUpperCase() === 'SELECTED');
+  const handleSelectCandidate = async () => {
+    if (!cand || cand.id === PENDING_CANDIDATE_ID) return;
+    setSelectError(null);
+    setSelectingCandidateId(cand.id);
+    try {
+      await selectCandidate(opportunityId, cand.id);
+      const res = await getAnalysis(opportunityId);
+      setData(res);
+      const updated = res.candidates?.find(c => c.id === cand.id);
+      if (updated) setSelected(updated);
+    } catch (e) {
+      setSelectError(e instanceof Error ? e.message : 'Failed to select candidate');
+    } finally {
+      setSelectingCandidateId(null);
+    }
+  };
   const handleSendChat = async () => {
     const msg = chatInput.trim();
     if (!msg) return;
@@ -199,6 +218,19 @@ export function Analysis({
         </div>
       </div>
 
+      {selectedCandidate && (
+        <div className="selected-candidate-banner">
+          <span className="selected-candidate-banner-icon">✓</span>
+          <span><strong>{selectedCandidate.name}</strong> is selected for this opportunity.</span>
+        </div>
+      )}
+
+      {selectError && (
+        <div style={{ marginBottom: 12, padding: 10, background: 'var(--accent-red-light)', borderRadius: 8, color: 'var(--accent-red)', fontSize: 13 }}>
+          {selectError}
+        </div>
+      )}
+
       <div className="analysis-layout">
         <div className="left-panel">
           <div className="card">
@@ -242,7 +274,7 @@ export function Analysis({
                     return (
                       <tr
                         key={c.id}
-                        className={cand?.id === c.id ? 'active' : ''}
+                        className={`${cand?.id === c.id ? 'active' : ''} ${!isPending && (c as Candidate).status?.toUpperCase() === 'SELECTED' ? 'selected-candidate' : ''}`}
                         onClick={() => setSelected(c)}
                         style={isPending ? { opacity: 0.85 } : undefined}
                       >
@@ -358,9 +390,23 @@ export function Analysis({
                       )}
                     </div>
                   </div>
-                  <div className="overall-score">
-                    <div className="overall-score-value">{cand.overallScore}%</div>
-                    <div className="overall-score-label">Overall Match</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    {(cand.status || '').toUpperCase() === 'SELECTED' ? (
+                      <span className="candidate-selected-badge">Selected</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={handleSelectCandidate}
+                        disabled={!!selectingCandidateId}
+                      >
+                        {selectingCandidateId === cand.id ? 'Selecting…' : 'Select'}
+                      </button>
+                    )}
+                    <div className="overall-score">
+                      <div className="overall-score-value">{cand.overallScore}%</div>
+                      <div className="overall-score-label">Overall Match</div>
+                    </div>
                   </div>
                 </div>
                 <div className="score-bars">

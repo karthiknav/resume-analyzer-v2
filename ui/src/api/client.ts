@@ -91,6 +91,17 @@ export async function listS3Files(prefix: string): Promise<S3ObjectInfo[]> {
   return request<S3ObjectInfo[]>(`/files?prefix=${encodeURIComponent(prefix)}`);
 }
 
+/** Set candidate status to SELECTED in CandidateAnalysis (DynamoDB). */
+export async function selectCandidate(
+  opportunityId: string,
+  candidateId: string
+): Promise<{ success: boolean; status: string }> {
+  return request<{ success: boolean; status: string }>(
+    `/opportunities/${opportunityId}/candidates/${encodeURIComponent(candidateId)}/select`,
+    { method: 'PATCH' }
+  );
+}
+
 /** Send chat message to agent; returns reply. */
 export async function sendChat(
   jobDescriptionId: string,

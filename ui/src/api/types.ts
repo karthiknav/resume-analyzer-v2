@@ -45,6 +45,8 @@ export interface Candidate {
   evidenceSnippets?: string[];
   gaps?: string[];
   recommendation?: string;
+  /** From CandidateAnalysis table: e.g. COMPLETED, PROCESSING, SELECTED */
+  status?: string;
 }
 
 export interface JdRequirements {

@@ -41,7 +41,6 @@ export function UploadResume({
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
 
   const validate = (file: File): string | null => {
     if (file.size > MAX_SIZE_MB * 1024 * 1024) {
@@ -63,8 +62,7 @@ export function UploadResume({
     }
     setUploading(true);
     setProcessing(false);
-    setUploadedFileName(file.name);
-    
+
     try {
       // Step 1: Upload to S3
       const { uploadUrl, key } = await getUploadUrl(

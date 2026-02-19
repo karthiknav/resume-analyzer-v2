@@ -106,7 +106,7 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
     
     try {
       // Step 1: Upload to S3
-      const { uploadUrl, key } = await getUploadJdUrl(file.name, file.type);
+      const { uploadUrl } = await getUploadJdUrl(file.name, file.type);
       await uploadToS3(uploadUrl, file);
       
       // Step 2: Show processing state
@@ -299,14 +299,14 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
         <div className="opportunity-table-header">
           <h3>Active Opportunities</h3>
           <div className="table-filters">
-            {(['all', 'new', 'progress', 'analyzed', 'closed'] as const).map((f) => (
+            {(['all', 'new', 'progress', 'closed'] as const).map((f) => (
               <button
                 key={f}
                 type="button"
                 className={`filter-btn ${filter === f ? 'active' : ''}`}
                 onClick={() => setFilter(f)}
               >
-                {f === 'all' ? 'All' : f === 'progress' ? 'In Progress' : f === 'analyzed' ? 'Analyzed' : f === 'closed' ? 'Closed' : 'New'}
+                {f === 'all' ? 'All' : f === 'progress' ? 'In Progress' : f === 'closed' ? 'Closed' : 'New'}
               </button>
             ))}
           </div>
