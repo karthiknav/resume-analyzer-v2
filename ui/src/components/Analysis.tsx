@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { getAnalysis, sendChat, selectCandidate } from '../api/client';
 import type { AnalysisDetail as AnalysisDetailType, Candidate } from '../api/types';
 import { UploadResume } from './UploadResume';
+import { BulkUpload } from './BulkUpload';
 
 function ScoreClass(score: number) {
   if (score >= 80) return 'score-high';
@@ -43,6 +44,9 @@ export function Analysis({
   const [selectError, setSelectError] = useState<string | null>(null);
   /** When set, we keep re-fetching analysis until this candidate has non-zero scores (handles API/S3 delay). */
   const [refiningForCandidateId, setRefiningForCandidateId] = useState<string | null>(null);
+  /** After bulk upload: number of files we're waiting to see as new candidates */
+  const [bulkPendingCount, setBulkPendingCount] = useState(0);
+  const bulkStartedAtCountRef = useRef(0);
 
   const refreshAnalysis = async (): Promise<AnalysisDetailType | null> => {
     setRefreshing(true);
@@ -134,6 +138,28 @@ export function Analysis({
     }, 1500);
     return () => clearInterval(interval);
   }, [opportunityId, refiningForCandidateId]);
+
+  // Poll for new candidates after bulk upload until we've seen all N
+  useEffect(() => {
+    if (bulkPendingCount <= 0 || !data) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await getAnalysis(opportunityId);
+        const currentCount = res.candidates?.length ?? 0;
+        const startedAt = bulkStartedAtCountRef.current;
+        if (currentCount - startedAt >= bulkPendingCount) {
+          setBulkPendingCount(0);
+          setData(res);
+          if (res.candidates?.length && !selected) setSelected(res.candidates[0]);
+        } else {
+          setData(res);
+        }
+      } catch {
+        // ignore
+      }
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [opportunityId, bulkPendingCount, data, selected]);
 
   const PENDING_CANDIDATE_ID = 'pending-resume';
   const selectedCandidate = data?.candidates?.find(c => (c.status || '').toUpperCase() === 'SELECTED');
@@ -402,6 +428,17 @@ export function Analysis({
                 }
               });
             }}
+          />
+
+          <BulkUpload
+            opportunityId={opportunityId}
+            onBulkUploadComplete={(successCount) => {
+              bulkStartedAtCountRef.current = data?.candidates?.length ?? 0;
+              setBulkPendingCount(successCount);
+            }}
+            bulkPendingCount={bulkPendingCount}
+            bulkStartedAtCount={bulkStartedAtCountRef.current}
+            currentCandidateCount={data?.candidates?.length ?? 0}
           />
         </div>
 

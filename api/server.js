@@ -145,17 +145,25 @@ app.get('/api/opportunities', async (req, res) => {
     const items = await Promise.all(rawItems.map(async (item) => {
       const jobId = item.jobDescriptionId ?? item.id ?? item.opportunityId;
       let candidatesCount = Number(item.candidatesCount ?? item.candidates ?? 0);
+      let topScore = item.topScore != null ? Number(item.topScore) : null;
       if (CANDIDATE_TABLE) {
         try {
           const q = await dynamo.send(new QueryCommand({
             TableName: CANDIDATE_TABLE,
             KeyConditionExpression: 'jobDescriptionId = :jid',
             ExpressionAttributeValues: { ':jid': jobId },
-            Select: 'COUNT',
+            ProjectionExpression: 'overallScore',
           }));
-          candidatesCount = q.Count ?? 0;
+          const candidateRows = q.Items ?? [];
+          candidatesCount = candidateRows.length;
+          if (candidateRows.length > 0) {
+            const scores = candidateRows
+              .map((r) => (r.overallScore != null ? Number(r.overallScore) : null))
+              .filter((n) => n != null && !Number.isNaN(n));
+            topScore = scores.length > 0 ? Math.max(...scores) : null;
+          }
         } catch (e) {
-          console.warn(`[opportunities] Failed to count candidates for ${jobId}:`, e.message);
+          console.warn(`[opportunities] Failed to query candidates for ${jobId}:`, e.message);
         }
       }
       const rawStatus = (item.status ?? 'new').toString();
@@ -179,7 +187,7 @@ app.get('/api/opportunities', async (req, res) => {
         s3Key: item.s3Key,
         status,
         candidatesCount,
-        topScore: item.topScore != null ? Number(item.topScore) : null,
+        topScore,
         created: createdStr,
       };
     }));

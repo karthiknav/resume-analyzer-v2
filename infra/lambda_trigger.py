@@ -124,13 +124,25 @@ def handle_candidates_upload(bucket, original_key, parts, so_id):
         qualifier="DEFAULT",
         payload=json.dumps(payload)
     )
-    # 4. Wait for analysis.json and update DynamoDB
+    # 4. Wait for analysis.json, read overallScore, and update DynamoDB
     analysis_s3_key = f"opportunities/{so_id}/candidates/{candidate_id}/analysis.json"
     max_retries = 50
     status = 'PROCESSING'
+    overall_score = 0
+    candidate_name = candidate_id
     for i in range(max_retries):
         try:
-            s3_client.get_object(Bucket=bucket, Key=analysis_s3_key)
+            obj = s3_client.get_object(Bucket=bucket, Key=analysis_s3_key)
+            body = obj.get('Body')
+            if body:
+                try:
+                    analysis_data = json.loads(body.read().decode())
+                    c = analysis_data.get('candidate') or {}
+                    overall_score = int(c.get('overallScore', 0) or 0)
+                    if c.get('name'):
+                        candidate_name = c.get('name')
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    pass  # keep overall_score 0, still mark COMPLETED
             status = 'COMPLETED'
             break
         except ClientError as e:
@@ -142,9 +154,10 @@ def handle_candidates_upload(bucket, original_key, parts, so_id):
     candidate_table.put_item(Item={
         'jobDescriptionId': so_id,
         'candidateId': candidate_id,
-        'candidateName': candidate_id,
+        'candidateName': candidate_name,
         'analysisS3Key': f's3://{bucket}/{analysis_s3_key}',
         'status': status,
+        'overallScore': overall_score,
         'createdAt': datetime.utcnow().isoformat(),
         'updatedAt': datetime.utcnow().isoformat()
     })
