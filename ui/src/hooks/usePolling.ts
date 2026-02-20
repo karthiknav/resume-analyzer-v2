@@ -28,7 +28,7 @@ export function usePolling({
   enabled = true,
 }: UsePollingOptions) {
   const attemptsRef = useRef(0);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!enabled) {

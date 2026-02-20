@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from 'react';
-import { getUploadUrl, uploadToS3, getAnalysis } from '../api/client';
+import { getUploadUrl, uploadToS3 } from '../api/client';
 
 const MAX_SIZE_MB = 10;
 const ALLOWED_TYPES = [
@@ -144,7 +144,6 @@ export function BulkUpload({
 
   const pendingCount = items.filter((i) => i.status === 'pending').length;
   const uploadedCount = items.filter((i) => i.status === 'uploaded').length;
-  const errorCount = items.filter((i) => i.status === 'error').length;
   const uploadingCount = items.filter((i) => i.status === 'uploading').length;
   const canUpload = pendingCount > 0 && !uploading;
   const analyzedCount =

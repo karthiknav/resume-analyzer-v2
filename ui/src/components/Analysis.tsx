@@ -622,7 +622,7 @@ export function Analysis({
               <div className="chat-messages">
                 {chatMessages.map((m, i) => (
                   <div key={i} className={`chat-msg ${m.role}`}>
-                    <div className="chat-msg-avatar">{m.role === 'agent' ? 'AI' : 'SM'}</div>
+                    <div className="chat-msg-avatar">{m.role === 'agent' ? 'AI' : 'HA'}</div>
                     <div className="chat-msg-bubble">{m.text}</div>
                   </div>
                 ))}

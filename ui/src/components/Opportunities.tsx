@@ -291,7 +291,7 @@ export function Opportunities({ onOpenAnalysis }: OpportunitiesProps) {
         </div>
         <div className="stat-card">
           <div className="label">Avg. Analysis Time</div>
-          <div className="value accent-amber">42s</div>
+          <div className="value accent-amber">50s</div>
         </div>
       </div>
 
