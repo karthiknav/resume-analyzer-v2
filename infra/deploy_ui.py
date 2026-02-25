@@ -61,28 +61,35 @@ def deploy():
         print("❌ ui/ directory not found")
         sys.exit(1)
 
-    # Build with VITE_API_BASE (Git Bash + Windows compatible)
-    env_vars = os.environ.copy()
-    env_vars["VITE_API_BASE"] = api_base
-    print("🔨 Building UI...")
     npm_path = shutil.which("npm") or (shutil.which("npm.cmd") if os.name == "nt" else None)
-    if npm_path:
-        result = subprocess.run(
-            [npm_path, "run", "build"],
+    if not npm_path:
+        print("❌ npm not found in PATH")
+        sys.exit(1)
+
+    def run_npm(args: list[str], env_override: dict | None = None) -> subprocess.CompletedProcess:
+        env = os.environ.copy()
+        if env_override:
+            env.update(env_override)
+        return subprocess.run(
+            [npm_path, *args],
             cwd=ui_dir,
-            env=env_vars,
+            env=env,
             capture_output=True,
             text=True,
         )
-    else:
-        result = subprocess.run(
-            "npm run build",
-            cwd=ui_dir,
-            env=env_vars,
-            capture_output=True,
-            text=True,
-            shell=True,
-        )
+
+    # Install dependencies (includes TypeScript) so tsc is available for build
+    print("📦 Installing UI dependencies (npm install)...")
+    result = run_npm(["install"])
+    if result.returncode != 0:
+        print(result.stderr or result.stdout)
+        sys.exit(1)
+    print("✅ Dependencies installed")
+
+    # Build with VITE_API_BASE (Git Bash + Windows compatible)
+    env_vars = {"VITE_API_BASE": api_base}
+    print("🔨 Building UI...")
+    result = run_npm(["run", "build"], env_override=env_vars)
     if result.returncode != 0:
         print(result.stderr or result.stdout)
         sys.exit(1)

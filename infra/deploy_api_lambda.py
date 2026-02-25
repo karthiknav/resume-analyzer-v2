@@ -8,6 +8,7 @@ import os
 import sys
 import zipfile
 import subprocess
+import shutil
 import boto3
 from pathlib import Path
 
@@ -23,7 +24,11 @@ def create_api_zip():
     # Ensure node_modules exists
     if not (api_dir / "node_modules").exists():
         print("📦 Installing npm dependencies...")
-        subprocess.run(["npm", "install"], cwd=api_dir, check=True)
+        npm_path = shutil.which("npm") or (shutil.which("npm.cmd") if os.name == "nt" else None)
+        if not npm_path:
+            print("❌ npm not found in PATH")
+            sys.exit(1)
+        subprocess.run([npm_path, "install"], cwd=api_dir, check=True)
     zip_buffer = __import__("io").BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in api_dir.rglob("*"):
